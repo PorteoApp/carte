@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test tuiles BDNB v2</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css" rel="stylesheet"/>
+<style>
+  html,body,#map{margin:0;height:100%;width:100%;}
+  #out{position:absolute;top:8px;left:8px;right:8px;z-index:5;background:rgba(255,255,255,.97);
+       border-radius:8px;padding:10px 12px;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;
+       max-height:60%;overflow:auto;white-space:pre-wrap;box-shadow:0 2px 10px rgba(0,0,0,.25);color:#111;}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="out">Test en cours…</div>
+<script>
+const out=document.getElementById('out');
+let lines=[];
+function add(s){ lines.push(s); out.textContent=lines.join('\n'); }
+
+// ── TEST 1 : appel DIRECT d'une tuile (tranche net le CORS / 404) ──
+// Tuile z14 couvrant Angers
+const TILE='https://api.bdnb.io/v1/bdnb/tuiles/batiment_groupe/14/8167/5738.pbf';
+add('TEST 1 — appel direct d’une tuile BDNB :');
+add('  '+TILE);
+fetch(TILE)
+  .then(r=>{ add('  → HTTP '+r.status+' '+r.statusText+' | content-type='+(r.headers.get('content-type')||'?')); return r.arrayBuffer(); })
+  .then(b=>{ add('  → taille = '+b.byteLength+' octets '+(b.byteLength>0?'✅ (données reçues, CORS OK)':'⚠️ (vide)')); })
+  .catch(e=>{ add('  → ÉCHEC : '+e.message+'  ⇒ probablement CORS bloqué'); });
+
+// ── TEST 2 : rendu MapLibre (nom de couche + champs) ──
+const CANDIDATES=['batiment_groupe','batiment_groupe_complet','batiment','batiments','default','bdnb','layer'];
+const map=new maplibregl.Map({
+  container:'map',
+  style:{version:8,
+    sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OSM'}},
+    layers:[{id:'bg',type:'raster',source:'osm'}]},
+  center:[-0.5560,47.4720], zoom:16
+});
+map.on('load',()=>{
+  map.addSource('bdnb',{type:'vector',
+    tiles:['https://api.bdnb.io/v1/bdnb/tuiles/batiment_groupe/{z}/{x}/{y}.pbf'],
+    minzoom:10, maxzoom:14});                 // maxzoom 14 : MapLibre sur-zoome au-delà
+  CANDIDATES.forEach((sl,i)=>map.addLayer({id:'cand'+i,type:'fill',source:'bdnb','source-layer':sl,
+    paint:{'fill-color':'#f97316','fill-opacity':0.5,'fill-outline-color':'#c2410c'}}));
+  map.on('idle',dump);
+  map.on('click',e=>{
+    for(let i=0;i<CANDIDATES.length;i++){
+      const fs=map.queryRenderedFeatures(e.point,{layers:['cand'+i]});
+      if(fs.length){ add('\nCLIC → source-layer="'+CANDIDATES[i]+'"\n'+JSON.stringify(fs[0].properties,null,2)); return; }
+    }
+    add('\nCLIC → aucun bâtiment ici.');
+  });
+});
+let errShown=false;
+map.on('error',e=>{ const m=(e&&e.error&&e.error.message)||e.type||'?'; if(!errShown){ errShown=true; add('\nTEST 2 — erreur MapLibre : '+m); } });
+let done=false;
+function dump(){
+  if(done) return;
+  for(let i=0;i<CANDIDATES.length;i++){
+    const fs=map.queryRenderedFeatures({layers:['cand'+i]});
+    if(fs.length){ done=true;
+      add('\nTEST 2 — ✅ rendu OK. source-layer="'+CANDIDATES[i]+'" ('+fs.length+' bâtiments)');
+      add('CHAMPS : '+Object.keys(fs[0].properties).join(', '));
+      add('Exemple : '+JSON.stringify(fs[0].properties));
+      return;
+    }
+  }
+}
+setTimeout(()=>{ if(!done) add('\nTEST 2 — aucun bâtiment rendu (voir résultat du TEST 1 pour la cause).'); }, 6000);
+</script>
+</body>
+</html>
