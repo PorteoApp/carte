@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test tuiles BDNB v3 — contenu réel</title>
+<script src="https://unpkg.com/pbf@3.2.1/dist/pbf.js"></script>
+<style>
+  body{margin:0;font:13px/1.55 ui-monospace,Menlo,Consolas,monospace;background:#111;color:#eee;padding:14px;}
+  #out{white-space:pre-wrap;word-break:break-word;}
+  b{color:#f97316;}
+</style>
+</head>
+<body>
+<div id="out">Lecture de la tuile BDNB…</div>
+<script>
+const out=document.getElementById('out');
+let lines=[];
+function add(s){ lines.push(s); out.textContent=lines.join('\n'); }
+
+// Une tuile z14 sur Angers (déjà confirmée 200 / CORS OK)
+const TILE='https://api.bdnb.io/v1/bdnb/tuiles/batiment_groupe/14/8167/5738.pbf';
+
+// Décodage MINIMAL d'une tuile vecteur (MVT) : on lit juste le nom de chaque couche (champ 1)
+// et la liste de ses clés de propriétés (champ 3). Pas besoin de décoder les géométries.
+function readLayer(tag, layer, pbf){
+  if(tag===1) layer.name=pbf.readString();
+  else if(tag===3){ (layer.keys=layer.keys||[]).push(pbf.readString()); }
+  else if(tag===5) layer.extent=pbf.readVarint();
+  else if(tag===15) layer.version=pbf.readVarint();
+}
+function readTile(tag, tile, pbf){
+  if(tag===3){ (tile.layers=tile.layers||[]).push(pbf.readMessage(readLayer,{})); }
+}
+
+add('Tuile : '+TILE+'\n');
+fetch(TILE)
+  .then(r=>{ add('HTTP '+r.status+' — '+ (r.ok?'OK':'échec')); return r.arrayBuffer(); })
+  .then(buf=>{
+    if(!window.Pbf){ add('⚠️ Librairie Pbf non chargée.'); return; }
+    const tile={};
+    new Pbf(new Uint8Array(buf)).readFields(readTile, tile);
+    const layers=tile.layers||[];
+    add('\nNombre de couches dans la tuile : '+layers.length+'\n');
+    layers.forEach(L=>{
+      add('■ COUCHE  "'+L.name+'"   (version '+(L.version||'?')+', extent '+(L.extent||'?')+')');
+      add('   source-layer à utiliser = "'+L.name+'"');
+      add('   CHAMPS ('+(L.keys?L.keys.length:0)+') : '+((L.keys||[]).join(', ')||'(aucun)'));
+      add('');
+    });
+    add('→ Copie-moi tout ça. Je cherche un champ d’ANNÉE ou de PÉRIODE de construction, et le type/usage (maison vs immeuble).');
+  })
+  .catch(e=>add('\nÉCHEC lecture : '+e.message));
+</script>
+</body>
+</html>
