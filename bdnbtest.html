@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Test tuiles BDNB</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css" rel="stylesheet"/>
+<style>
+  html,body,#map{margin:0;height:100%;width:100%;}
+  #out{position:absolute;top:8px;left:8px;right:8px;z-index:5;background:rgba(255,255,255,.96);
+       border-radius:8px;padding:10px 12px;font:12px/1.45 ui-monospace,Menlo,Consolas,monospace;
+       max-height:46%;overflow:auto;white-space:pre-wrap;box-shadow:0 2px 10px rgba(0,0,0,.25);color:#111;}
+  #hint{position:absolute;bottom:8px;left:8px;z-index:5;background:rgba(0,0,0,.7);color:#fff;
+        border-radius:6px;padding:6px 10px;font:12px sans-serif;}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div id="out">Chargement… zoome sur une ville puis clique un bâtiment.</div>
+<div id="hint">Zoome (≥16) sur un quartier, puis clique un bâtiment.</div>
+<script>
+const out=document.getElementById('out');
+function log(s){ out.textContent = s; }
+
+// Fond OSM simple + source tuiles BDNB
+const map=new maplibregl.Map({
+  container:'map',
+  style:{version:8,
+    sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OSM'}},
+    layers:[{id:'bg',type:'raster',source:'osm'}]},
+  center:[-0.5560,47.4720], zoom:16   // Angers
+});
+
+// On teste plusieurs noms de "source-layer" possibles à l'intérieur des tuiles
+const CANDIDATES=['batiment_groupe','batiment_groupe_complet','batiment','batiments','default','bdnb','layer'];
+
+map.on('load',()=>{
+  map.addSource('bdnb',{
+    type:'vector',
+    tiles:['https://api.bdnb.io/v1/bdnb/tuiles/batiment_groupe/{z}/{x}/{y}.pbf'],
+    minzoom:10, maxzoom:16
+  });
+  CANDIDATES.forEach((sl,i)=>{
+    map.addLayer({id:'cand'+i,type:'fill',source:'bdnb','source-layer':sl,
+      paint:{'fill-color':'#f97316','fill-opacity':0.45,'fill-outline-color':'#c2410c'}});
+  });
+  map.on('idle',dump);
+  map.on('click',e=>{
+    for(let i=0;i<CANDIDATES.length;i++){
+      const fs=map.queryRenderedFeatures(e.point,{layers:['cand'+i]});
+      if(fs.length){ log('source-layer = "'+CANDIDATES[i]+'"\n\nPropriétés du bâtiment cliqué :\n'+JSON.stringify(fs[0].properties,null,2)); return; }
+    }
+    log('Aucun bâtiment sous le clic.\nSi la carte reste sans bâtiments oranges → soit CORS bloque les tuiles, soit aucun nom de couche testé ne correspond.');
+  });
+});
+map.on('error',e=>{
+  const m=(e&&e.error&&e.error.message)||e.type||'inconnue';
+  log('⚠️ ERREUR MapLibre (souvent CORS sur les tuiles, ou 404) :\n'+m+'\n\nSi c’est du CORS, les tuiles ne sont pas exploitables directement.');
+});
+
+let done=false;
+function dump(){
+  if(done) return;
+  for(let i=0;i<CANDIDATES.length;i++){
+    const fs=map.queryRenderedFeatures({layers:['cand'+i]});
+    if(fs.length){
+      done=true;
+      const keys=Object.keys(fs[0].properties);
+      log('✅ Tuiles BDNB chargées (CORS OK).\n'
+        + 'source-layer = "'+CANDIDATES[i]+'"  ·  '+fs.length+' bâtiments visibles.\n\n'
+        + 'CHAMPS disponibles sur un bâtiment :\n'+keys.join(', ')+'\n\n'
+        + 'Exemple complet :\n'+JSON.stringify(fs[0].properties,null,2)
+        + '\n\n→ Copie-moi ces champs (surtout s’il y a une année/période de construction).');
+      return;
+    }
+  }
+  log('Tuiles pas encore rendues. Reste zoomé sur une ville.\n'
+    + 'Si ça reste vide longtemps : CORS bloque probablement les tuiles (regarde la console F12).');
+}
+</script>
+</body>
+</html>
