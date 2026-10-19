@@ -1,0 +1,811 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Porteo — Test zones dessinées</title>
+<meta name="robots" content="noindex,nofollow">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css" rel="stylesheet"/>
+<link rel="preconnect" href="https://data.geopf.fr" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* =====================================================================
+     MAQUETTE DE TEST « ZONES DESSINÉES » — page autonome, NON reliée à Glide.
+     - Lecture seule côté Porteo : identité + zones de l'équipe (cellstates).
+     - AUCUNE écriture dans Google Sheets / Apps Script : les zones dessinées
+       et les statuts des portes restent sur CE téléphone (stockage local).
+     ===================================================================== */
+  :root{--accent:#f07020;--ink:#111827;--ink2:#6b7280;--surface:#fff;--border:#e7e9ee;--blue:#3b82f6;--green:#22c55e;--orange:#ff7a00;--wait:#facc15;--red:#ef4444;
+    --sh:0 4px 14px rgba(17,24,39,.13);--sh-lg:0 14px 36px rgba(17,24,39,.25);--sab:env(safe-area-inset-bottom,0px);--sat:env(safe-area-inset-top,0px);}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;font-family:'DM Sans',system-ui,sans-serif;color:var(--ink);background:#0b0b0b;overflow:hidden;}
+  button{font-family:inherit;}
+  .maplibregl-marker{position:absolute;top:0;left:0;will-change:transform;}
+  #map{position:fixed;inset:0;}
+
+  /* ---------- Bandeau haut ---------- */
+  #top{position:fixed;left:0;right:0;top:0;z-index:20;padding:calc(10px + var(--sat)) 16px 0;pointer-events:none;}
+  .bar{display:flex;align-items:center;gap:8px;pointer-events:auto;}
+  .brand{background:rgba(17,24,39,.88);color:#fff;border-radius:12px;padding:7px 11px;font-size:12px;line-height:1.2;box-shadow:var(--sh);max-width:52%;}
+  .brand b{display:block;font-size:13px;letter-spacing:.2px;}
+  .brand span{color:#cbd5e1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;}
+  .tag{display:inline-block;background:var(--accent);color:#fff;font-size:10px;font-weight:800;letter-spacing:.4px;border-radius:6px;padding:1px 6px;margin-left:4px;vertical-align:1px;}
+  .sbox{flex:1;min-width:0;position:relative;}
+  .sbox input{width:100%;border:none;border-radius:12px;padding:11px 12px;font-size:15px;font-family:inherit;box-shadow:var(--sh);outline:none;background:rgba(255,255,255,.97);}
+  #sres{position:absolute;left:0;right:0;top:46px;background:#fff;border-radius:12px;box-shadow:var(--sh-lg);overflow:hidden;display:none;}
+  #sres div{padding:11px 12px;font-size:14px;border-top:1px solid var(--border);cursor:pointer;}
+  #sres div:first-child{border-top:none;}
+  #banner{pointer-events:auto;margin-top:8px;background:rgba(17,24,39,.9);color:#fff;border-radius:12px;padding:9px 12px;font-size:13.5px;font-weight:600;box-shadow:var(--sh);display:none;}
+  #banner.on{display:block;}
+  #banner small{display:block;font-weight:500;color:#cbd5e1;font-size:12px;margin-top:2px;}
+
+  /* ---------- Boutons flottants ---------- */
+  #fabs{position:fixed;right:16px;z-index:15;display:flex;flex-direction:column;gap:10px;transition:bottom .2s;}
+  .fab{width:46px;height:46px;border-radius:14px;border:none;background:#fff;box-shadow:var(--sh);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);}
+  .fab svg{width:22px;height:22px;}
+  #legend{position:fixed;right:72px;z-index:16;background:#fff;border-radius:14px;box-shadow:var(--sh-lg);padding:12px 14px;font-size:13px;display:none;min-width:210px;}
+  #legend.on{display:block;}
+  #legend h4{margin:0 0 6px;font-size:12px;color:var(--ink2);text-transform:uppercase;letter-spacing:.4px;}
+  #legend .li{display:flex;align-items:center;gap:8px;margin:5px 0;}
+  .sw{width:16px;height:12px;border-radius:3px;flex:none;}
+  .sw.dash{background:transparent;border:2px dashed var(--wait);}
+  .dot{width:12px;height:12px;border-radius:50%;flex:none;border:2px solid rgba(17,24,39,.4);}
+
+  /* ---------- Panneau bas ---------- */
+  #panel{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--surface);border-radius:18px 18px 0 0;box-shadow:0 -8px 30px rgba(0,0,0,.25);padding:10px 12px calc(10px + var(--sab));max-height:72vh;overflow-y:auto;}
+  @media (min-width:640px){#panel{left:50%;transform:translateX(-50%);width:460px;bottom:16px;border-radius:20px;}}
+  .row{display:flex;gap:8px;}
+  .row>*{flex:1;}
+  .btn{border:none;border-radius:12px;padding:12px 10px;font-size:14.5px;font-weight:700;cursor:pointer;background:#f1f3f6;color:var(--ink);display:flex;align-items:center;justify-content:center;gap:7px;min-height:46px;line-height:1.15;text-align:center;}
+  .btn svg{width:18px;height:18px;flex:none;}
+  .btn.pri{background:var(--accent);color:#fff;}
+  .btn.dark{background:var(--ink);color:#fff;}
+  .btn.ok{background:#16a34a;color:#fff;}
+  .btn.blue{background:var(--blue);color:#fff;}
+  .btn:disabled{opacity:.42;cursor:default;}
+  .btn.sm{min-height:40px;padding:9px 10px;font-size:13.5px;}
+  .lnk{background:none;border:none;color:var(--ink2);font-size:13px;font-weight:600;text-decoration:underline;padding:8px 4px;cursor:pointer;}
+  .lnk.red{color:#b91c1c;}
+  .muted{color:var(--ink2);font-size:13px;line-height:1.4;}
+  .h1{font-size:17px;font-weight:800;margin:0 0 4px;}
+  .gap{height:10px;}
+  .gap6{height:6px;}
+
+  /* compteur pendant le dessin */
+  .pill{display:flex;align-items:center;gap:10px;border-radius:14px;padding:10px 12px;color:#fff;font-weight:800;font-size:16px;background:#9ca3af;}
+  .pill .n{font-size:24px;letter-spacing:-.5px;}
+  .pill small{display:block;font-size:12.5px;font-weight:600;opacity:.95;}
+  .pill.low{background:#f59e0b;} .pill.good{background:#16a34a;} .pill.high{background:var(--red);}
+  .warn{margin-top:8px;font-size:12.5px;color:#92400e;background:#fef3c7;border-radius:10px;padding:7px 10px;}
+  .warn.info{color:#1e3a8a;background:#dbeafe;}
+
+  /* carte zone */
+  .zh{display:flex;align-items:center;gap:10px;}
+  .code{white-space:nowrap;font-size:21px;font-weight:800;letter-spacing:2px;font-variant-numeric:tabular-nums;}
+  .st{white-space:nowrap;display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:800;}
+  .st.attente{background:#fef9c3;color:#854d0e;} .st.encours{background:#dbeafe;color:#1d4ed8;} .st.terminee{background:#dcfce7;color:#166534;} .st.aged{background:#ffedd5;color:#9a3412;}
+  .dpebar{display:flex;gap:3px;margin-top:6px;}
+  .zi{font-size:12.5px;color:var(--ink2);margin-top:2px;} .zi b{color:var(--ink);} .zi .xpi{color:#a16207;font-weight:700;}
+  .ib{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:8px 0 6px;}
+  .ib button{border:none;border-radius:11px;background:#f1f3f6;padding:7px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:800;color:var(--ink);cursor:pointer;font-family:inherit;}
+  .ib button svg{width:18px;height:18px;}
+  .dpebar div{flex:1;text-align:center;border-radius:6px;padding:3px 0;font-size:11px;font-weight:800;line-height:1.1;}
+  .dpebar div span{margin-left:3px;font-size:11px;font-weight:700;}
+  .dpebar div.z{opacity:.35;}
+  .xp{margin-top:8px;font-size:13px;background:#fefce8;border:1px solid #fde68a;color:#713f12;border-radius:10px;padding:8px 10px;}
+  .zl{border-top:1px solid var(--border);padding:11px 2px;display:flex;align-items:center;gap:10px;cursor:pointer;}
+  .zl:first-of-type{border-top:none;}
+  .zl b{font-size:16px;letter-spacing:1px;}
+  .zl .muted{font-size:12.5px;}
+  .zl .grow{flex:1;min-width:0;}
+  .codein{width:100%;border:2px solid var(--border);border-radius:12px;padding:12px;font-size:22px;font-weight:800;letter-spacing:4px;text-align:center;text-transform:uppercase;font-family:inherit;outline:none;}
+  .codein:focus{border-color:var(--accent);}
+
+  /* parcours */
+  #wtop{position:fixed;left:16px;right:16px;top:calc(10px + var(--sat));z-index:21;display:none;background:rgba(17,24,39,.92);color:#fff;border-radius:14px;padding:9px 12px;box-shadow:var(--sh);font-size:13px;}
+  #wtop.on{display:flex;align-items:center;gap:10px;}
+  #wtop b{font-size:15px;letter-spacing:1px;}
+  #wtop .cnt{margin-left:auto;font-size:18px;font-weight:800;}
+  #wtop .cnt small{font-size:12px;font-weight:600;color:#cbd5e1;}
+  body.walking #top{display:none;}
+  .hp{z-index:2;width:28px;height:28px;border-radius:50%;background:#fff;color:#111827;font-weight:800;font-size:12px;letter-spacing:-.3px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 7px rgba(0,0,0,.6);border:2px solid rgba(17,24,39,.45);cursor:pointer;}
+  .hp.a{background:#f59e0b;color:#fff;border-color:#fff;} .hp.n{background:#6b7280;color:#fff;border-color:#fff;} .hp.r{background:#16a34a;color:#fff;border-color:#fff;}
+  .hp.x{background:#fff;border:2px dashed #111827;}
+  .hp.sel{transform:scale(1.25);box-shadow:0 0 0 4px rgba(240,112,32,.75),0 2px 7px rgba(0,0,0,.6);z-index:5;}
+  .hp i{position:absolute;right:-6px;top:-6px;width:15px;height:15px;border-radius:5px;font-style:normal;font-size:9.5px;font-weight:800;display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,0,0,.35);}
+  .stbtns{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .stbtns .btn{min-height:52px;}
+  .b-a{background:#f59e0b!important;color:#fff!important;} .b-n{background:#6b7280!important;color:#fff!important;} .b-r{background:#16a34a!important;color:#fff!important;} .b-x{background:#fff!important;border:2px dashed #111827!important;}
+  .btn.cur{outline:3px solid var(--ink);outline-offset:2px;}
+
+  /* étiquettes des zones dessinées sur la carte */
+  .zchip{background:#fff;border-radius:9px;padding:3px 7px;font-size:11.5px;font-weight:800;letter-spacing:.6px;box-shadow:0 2px 6px rgba(0,0,0,.45);display:flex;align-items:center;gap:5px;cursor:pointer;white-space:nowrap;}
+  body.tapmode .zchip{pointer-events:none;opacity:.75;}
+  .zchip i{width:9px;height:9px;border-radius:50%;display:block;}
+  /* position de test / GPS */
+  .me{width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25),0 2px 6px rgba(0,0,0,.5);}
+  .me.sim{background:#a855f7;box-shadow:0 0 0 6px rgba(168,85,247,.25),0 2px 6px rgba(0,0,0,.5);}
+
+  /* ---- dessin : sélecteur de méthode (droite) + barre compacte ---- */
+  #dm{position:fixed;right:10px;top:calc(70px + var(--sat));z-index:25;display:none;flex-direction:column;gap:6px;}
+  body.drawing #dm{display:flex;}
+  body.drawing .maplibregl-canvas-container,body.drawing .maplibregl-canvas{touch-action:none!important;}   /* le trait au doigt n'est jamais repris par le navigateur */
+  body.drawing #fabs,body.drawing #legend{display:none!important;}
+  #dm button{width:62px;border:none;border-radius:13px;background:rgba(255,255,255,.95);box-shadow:var(--sh);padding:7px 2px 6px;font-size:10.5px;font-weight:800;color:var(--ink);display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;line-height:1.05;}
+  #dm button svg{width:21px;height:21px;}
+  #dm button.on{background:var(--accent);color:#fff;}
+  .dbar{display:flex;align-items:center;gap:6px;}
+  .dpill{flex:1;min-width:0;display:flex;align-items:baseline;gap:6px;border-radius:12px;padding:8px 10px;background:#9ca3af;color:#fff;white-space:nowrap;overflow:hidden;}
+  .dpill b{font-size:20px;letter-spacing:-.5px;line-height:1;} .dpill span{font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;}
+  .dpill.low{background:#f59e0b;} .dpill.good{background:#16a34a;} .dpill.high{background:var(--red);}
+  .dic{flex:none;width:40px;height:40px;border:none;border-radius:11px;background:#f1f3f6;color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .dic svg{width:19px;height:19px;} .dic:disabled{opacity:.35;}
+  .dok{flex:none;height:40px;border:none;border-radius:11px;background:#16a34a;color:#fff;font-weight:800;font-size:14px;padding:0 12px;display:flex;align-items:center;gap:5px;cursor:pointer;font-family:inherit;}
+  .dok svg{width:17px;height:17px;} .dok:disabled{opacity:.4;}
+  .dhint{margin-top:6px;font-size:11.5px;color:var(--ink2);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .dhint .dw{color:#92400e;font-weight:700;}
+  .dstep,.dseg{display:flex;align-items:center;gap:6px;margin-top:6px;}
+  .dstep button{width:40px;height:34px;border:none;border-radius:10px;background:#f1f3f6;font-size:20px;font-weight:800;cursor:pointer;color:var(--ink);}
+  .dstep button:disabled{opacity:.35;} .dstep span{flex:1;text-align:center;font-weight:800;font-size:14px;}
+  .dseg button{flex:1;height:34px;border:none;border-radius:10px;background:#f1f3f6;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;gap:5px;cursor:pointer;font-family:inherit;color:var(--ink);}
+  .dseg button svg{width:16px;height:16px;} .dseg button.on{background:var(--ink);color:#fff;}
+  #panel.compact{padding-top:10px;}
+  #toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(70px + var(--sat));z-index:60;background:rgba(17,24,39,.94);color:#fff;border-radius:12px;padding:10px 14px;font-size:14px;font-weight:600;max-width:calc(100% - 32px);box-shadow:var(--sh-lg);opacity:0;pointer-events:none;transition:opacity .2s;text-align:center;}
+  #toast.on{opacity:1;}
+  #modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;padding:16px;}
+  #modal.on{display:flex;}
+  #modal .box{background:#fff;border-radius:18px;padding:18px 16px;max-width:420px;width:100%;box-shadow:var(--sh-lg);max-height:86vh;overflow-y:auto;}
+  #modal ol{padding-left:20px;margin:8px 0;font-size:14px;line-height:1.45;}
+  #modal ol li{margin:5px 0;}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="top">
+  <div class="bar">
+    <div class="brand"><b>Porteo<span class="tag">TEST</span></b><span id="who">Chargement…</span></div>
+    <div class="sbox"><input id="q" type="search" placeholder="Ville, adresse…" autocomplete="off"><div id="sres"></div></div>
+  </div>
+  <div id="banner"></div>
+</div>
+<div id="wtop"></div>
+
+<div id="fabs">
+  <button class="fab" id="f-help" title="Aide"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.3a2.6 2.6 0 0 1 5 .9c0 1.8-2.5 2.2-2.5 3.8"/><circle cx="12" cy="17.3" r=".6" fill="currentColor"/></svg></button>
+  <button class="fab" id="f-leg" title="Légende"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="m3 13 9 5 9-5"/></svg></button>
+  <button class="fab" id="f-gps" title="Ma position"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
+</div>
+<div id="legend">
+  <h4>Zones dessinées</h4>
+  <div class="li"><span class="sw dash"></span>En attente de présence (48 h)</div>
+  <div class="li"><span class="sw" style="background:var(--blue)"></span>En cours</div>
+  <div class="li"><span class="sw" style="background:var(--green)"></span>Terminée (moins de 6 mois)</div>
+  <div class="li"><span class="sw" style="background:var(--orange)"></span>Terminée (plus de 6 mois)</div>
+  <h4 style="margin-top:10px">Quadrillage actuel (équipe)</h4>
+  <div class="li"><span class="sw" style="background:rgba(59,130,246,.45);border:1px solid var(--blue)"></span>En cours</div>
+  <div class="li"><span class="sw" style="background:rgba(34,197,94,.45);border:1px solid var(--green)"></span>Faite (moins de 6 mois)</div>
+  <div class="li"><span class="sw" style="background:rgba(255,122,0,.45);border:1px solid var(--orange)"></span>Faite (plus de 6 mois)</div>
+  <h4 style="margin-top:10px">Portes</h4>
+  <div class="li"><span class="dot" style="background:#fff"></span>À faire</div>
+  <div class="li"><span class="dot" style="background:#f59e0b"></span>Absent</div>
+  <div class="li"><span class="dot" style="background:#6b7280"></span>Pas intéressé</div>
+  <div class="li"><span class="dot" style="background:#16a34a"></span>RDV pris</div>
+  <div class="li"><span class="dot" style="background:#fff;border:2px dashed #111827"></span>À refaire</div>
+</div>
+
+<div id="dm"></div>
+<div id="panel"></div>
+<div id="toast"></div>
+<div id="modal"><div class="box" id="mbox"></div></div>
+
+<script>
+/* ========================= Constantes ========================= */
+const SHEETS_URL='https://script.google.com/macros/s/AKfycbxiLRobw1pG1J99MaWQpEqFiYhHnQHMsIGDfeliYT3Fivc1GkcJcU_v3wbTq9gMpoq2/exec';   /* LECTURE SEULE : identité + cellstates */
+const BDNB_TILES='https://api.bdnb.io/v1/bdnb/tuiles/batiment_groupe/{z}/{x}/{y}.pbf';
+const BDNB_SRC='sql_statement';
+const IGN='https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&FORMAT=image/jpeg&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}';
+const CELL=0.003;                 /* quadrillage actuel (affiché pour contexte) */
+const MIN_H=30, MAX_H=150;        /* nombre de maisons individuelles exigé dans une zone */
+const TOL_M=50;                   /* tolérance de localisation autour de la zone (m) */
+const TTL_MS=48*3600*1000;        /* zone non commencée supprimée au bout de 48 h */
+const RESUME_MS=12*3600*1000;     /* reprise sans relocalisation pendant 12 h sur ce téléphone */
+const AGE_MS=6*30.44*24*3600*1000;/* fraîcheur : 6 mois */
+const DRAW_MIN_ZOOM=15;
+const CODE_ABC='ABCDEFGHJKMNPQRSTUVWXYZ23456789';   /* sans 0/O, 1/I/L → pas de confusion par SMS */
+const DPE_COLORS={A:'#319834',B:'#33cc33',C:'#ccff33',D:'#ffff33',E:'#ffcc33',F:'#ff9933',G:'#ff3333'};
+const RES={a:{l:'Absent',c:'b-a'},n:{l:'Pas intéressé',c:'b-n'},r:{l:'RDV pris',c:'b-r'},x:{l:'À refaire',c:'b-x'}};
+const SK='porteo_zt_v1';          /* stockage local de la maquette (ce téléphone uniquement) */
+const rowid=(new URLSearchParams(location.search).get('rowid')||'').trim();
+const zParam=(new URLSearchParams(location.search).get('z')||'').trim();
+
+/* ========================= État ========================= */
+let map, ME={name:'',company:'',isAdmin:false,ok:false};
+let ZONES=[];                     /* zones dessinées (local) */
+let GRID=[];                      /* cases du quadrillage de l'équipe (lecture seule) */
+let mode='idle';                  /* idle | draw | zone | list | code | walk | house | sim */
+let DRAW=[];                      /* sommets du contour en cours */
+let SEL=null;                     /* code de la zone ouverte */
+let WALK=null;                    /* {code} parcours en cours */
+let HSEL=null;                    /* maison sélectionnée pendant le parcours */
+let _mkTap=0, _bVer=0, _bMemo=null, _hT=0, _drawStat={n:0,ok:false};
+let zoneChips=[], walkPins=new Map(), meMarker=null;
+
+/* ========================= Outils ========================= */
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function $(id){return document.getElementById(id);}
+function fc(f){return {type:'FeatureCollection',features:f};}
+let _tt=0;function toast(t,ms){const e=$('toast');e.textContent=t;e.classList.add('on');clearTimeout(_tt);_tt=setTimeout(()=>e.classList.remove('on'),ms||2600);}
+async function fetchJson(u,ms){try{const c=new AbortController();const t=setTimeout(()=>{try{c.abort();}catch(e){}},ms||9000);const r=await fetch(u,{signal:c.signal});clearTimeout(t);return JSON.parse(await r.text());}catch(e){return null;}}
+function fmtCode(c){return c?c.slice(0,3)+'-'+c.slice(3):'';}
+function normCode(s){return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function pad(n){return String(n).padStart(2,'0');}
+function fmtDT(ts){const d=new Date(ts);return pad(d.getDate())+'/'+pad(d.getMonth()+1)+' à '+pad(d.getHours())+':'+pad(d.getMinutes());}
+function fmtLeft(ms){if(ms<=0)return '0 min';const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000);return (h?h+' h ':'')+pad(m)+' min';}
+function ic(n){const P={
+  pen:'<path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>',
+  list:'<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M16 7l3 3"/>',
+  undo:'<path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>',
+  x:'<path d="M6 6l12 12M18 6 6 18"/>',
+  check:'<path d="m5 12 5 5 9-10"/>',
+  copy:'<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a1 1 0 0 1 1-1h10"/>',
+  share:'<path d="M12 3v13M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',
+  nav:'<path d="M3 11 21 3l-8 18-2-8-8-2Z"/>',
+  pin:'<path d="M12 21s-7-6.2-7-12a7 7 0 0 1 14 0c0 5.8-7 12-7 12Z"/><circle cx="12" cy="9" r="2.5"/>',
+  flag:'<path d="M5 21V4M5 4h12l-2 4 2 4H5"/>',
+  back:'<path d="m15 18-6-6 6-6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  lasso:'<ellipse cx="12" cy="9" rx="8" ry="5.5"/><path d="M7 13.5c-1 1.5-1 3.5 1 4.5 1.5.7 2-1 1-2"/>',
+  spark:'<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6"/>',
+  brush:'<path d="M14 4 20 10 11 19a3 3 0 0 1-4 0l-2-2a3 3 0 0 1 0-4Z"/><path d="m4 20 3-3"/>',
+  eraser:'<path d="m16 4 5 5-10 10H6l-3-3Z"/><path d="M11 19h10M9 9l6 6"/>',
+  trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>'};
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'+(P[n]||'')+'</svg>';}
+
+/* géométrie (petites distances → projection locale en mètres) */
+function mXY(p,lat0){return [p[0]*111320*Math.cos(lat0*Math.PI/180),p[1]*110540];}
+function pip(pt,poly){let ins=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const xi=poly[i][0],yi=poly[i][1],xj=poly[j][0],yj=poly[j][1];
+  if(((yi>pt[1])!==(yj>pt[1]))&&(pt[0]<(xj-xi)*(pt[1]-yi)/(yj-yi)+xi))ins=!ins;}return ins;}
+function distToPolyM(pt,poly){const lat0=pt[1],P=mXY(pt,lat0);let best=Infinity;
+  for(let i=0;i<poly.length;i++){const A=mXY(poly[i],lat0),B=mXY(poly[(i+1)%poly.length],lat0);const dx=B[0]-A[0],dy=B[1]-A[1];const L=dx*dx+dy*dy;
+    let t=L?((P[0]-A[0])*dx+(P[1]-A[1])*dy)/L:0;t=Math.max(0,Math.min(1,t));const x=A[0]+t*dx-P[0],y=A[1]+t*dy-P[1];best=Math.min(best,Math.sqrt(x*x+y*y));}
+  return best;}
+function segX(a,b,c,d){const o=(p,q,r)=>(q[0]-p[0])*(r[1]-p[1])-(q[1]-p[1])*(r[0]-p[0]);
+  const d1=o(c,d,a),d2=o(c,d,b),d3=o(a,b,c),d4=o(a,b,d);return ((d1>0&&d2<0)||(d1<0&&d2>0))&&((d3>0&&d4<0)||(d3<0&&d4>0));}
+function selfCross(pts){const n=pts.length;if(n<4)return false;
+  for(let i=0;i<n;i++){const a=pts[i],b=pts[(i+1)%n];for(let j=i+1;j<n;j++){if(j===i||(j+1)%n===i||(i+1)%n===j)continue;if(segX(a,b,pts[j],pts[(j+1)%n]))return true;}}return false;}
+function bboxOf(pts){let w=180,s=90,e=-180,n=-90;pts.forEach(p=>{w=Math.min(w,p[0]);e=Math.max(e,p[0]);s=Math.min(s,p[1]);n=Math.max(n,p[1]);});return [[w,s],[e,n]];}
+function avg(pts){let x=0,y=0;pts.forEach(p=>{x+=p[0];y+=p[1];});return [x/pts.length,y/pts.length];}
+function ring(pts){return pts.concat([pts[0]]);}
+function centroid(g){if(!g||!g.coordinates)return null;let r=g.coordinates;while(Array.isArray(r[0])&&Array.isArray(r[0][0]))r=r[0];if(!Array.isArray(r[0]))return null;let sx=0,sy=0;r.forEach(p=>{sx+=p[0];sy+=p[1];});return [sx/r.length,sy/r.length];}
+
+/* ========================= Stockage local (ce téléphone) ========================= */
+function loadZones(){try{const a=JSON.parse(localStorage.getItem(SK)||'[]');return Array.isArray(a)?a:[];}catch(e){return [];}}
+function saveZones(){try{localStorage.setItem(SK,JSON.stringify(ZONES));}catch(e){toast('Stockage du téléphone indisponible : la zone ne sera pas gardée.');}}
+function alive(z){return z.status!=='attente'||(Date.now()-z.created)<TTL_MS;}
+function purge(){const n=ZONES.length;ZONES=ZONES.filter(alive);if(ZONES.length!==n){saveZones();
+  if(SEL&&!getZone(SEL)){SEL=null;if(mode==='zone')showIdle();}renderZones();refreshHouses();}}
+function getZone(code){return ZONES.find(z=>z.code===code)||null;}
+function zoneCat(z){if(z.status==='attente')return 'attente';if(z.status==='encours')return 'encours';return (Date.now()-(z.doneAt||z.created))<AGE_MS?'terminee':'aged';}
+const CAT_COL={attente:'#facc15',encours:'#3b82f6',terminee:'#22c55e',aged:'#ff7a00'};
+const CAT_LBL={attente:'En attente de présence',encours:'En cours',terminee:'Terminée',aged:'Terminée (+6 mois)'};
+function genCode(){const used=new Set(ZONES.map(z=>z.code));for(let k=0;k<50;k++){const r=new Uint32Array(6);(window.crypto||{}).getRandomValues?crypto.getRandomValues(r):r.forEach((_,i)=>r[i]=Math.floor(Math.random()*1e9));
+  let c='';r.forEach(v=>c+=CODE_ABC[v%CODE_ABC.length]);if(!used.has(c))return c;}return null;}
+
+/* lien de partage autonome (maquette) : code + date + contour, SANS identifiant de l'expéditeur */
+function encZone(z){const f=[];let px=0,py=0;z.pts.forEach((p,i)=>{const x=Math.round(p[0]*1e5),y=Math.round(p[1]*1e5);f.push(i?x-px:x,i?y-py:y);px=x;py=y;});
+  return z.code+'.'+Math.floor(z.created/1000).toString(36)+'.'+f.map(v=>v.toString(36)).join('_');}
+function decZone(s){try{const a=String(s).split('.');if(a.length!==3)return null;const code=normCode(a[0]);if(!/^[A-Z2-9]{6}$/.test(code))return null;
+  const created=parseInt(a[1],36)*1000;if(!(created>1.6e12&&created<Date.now()+864e5))return null;
+  const v=a[2].split('_').map(x=>parseInt(x,36));if(v.length<6||v.length%2||v.length>200||v.some(x=>!Number.isFinite(x)))return null;
+  const pts=[];let x=0,y=0;for(let i=0;i<v.length;i+=2){x+=v[i];y+=v[i+1];pts.push([x/1e5,y/1e5]);}
+  if(pts.some(p=>Math.abs(p[0])>180||Math.abs(p[1])>90))return null;return {code,created,pts};}catch(e){return null;}}
+function shareUrl(z){return location.origin+location.pathname+'?z='+encZone(z);}
+
+/* ========================= Carte ========================= */
+async function hybrid(){
+  const base={version:8,glyphs:'https://tiles.openfreemap.org/fonts/{fontstack}/{range}.pbf',sources:{ign:{type:'raster',tiles:[IGN],tileSize:256,maxzoom:19}},layers:[{id:'bg',type:'background',paint:{'background-color':'#0b0b0b'}}]};
+  try{const KEY='porteo_style_v1';let st=null;try{st=JSON.parse(localStorage.getItem(KEY)||'null');}catch(e){}
+    const get=()=>{const c=new AbortController();const t=setTimeout(()=>{try{c.abort();}catch(e){}},6000);
+      return fetch('https://tiles.openfreemap.org/styles/positron',{signal:c.signal}).then(r=>r.json()).then(j=>{clearTimeout(t);if(j&&j.layers){try{localStorage.setItem(KEY,JSON.stringify(j));}catch(e){}}return j;});};
+    if(st&&st.layers){get().catch(()=>{});}else{st=await get();}
+    base.sources=Object.assign(base.sources,st.sources);base.glyphs=st.glyphs||base.glyphs;
+    base.layers=base.layers.concat(st.layers.filter(l=>l.type!=='symbol'&&l.type!=='background'));
+    base.layers.push({id:'ign',type:'raster',source:'ign'});
+    base.layers=base.layers.concat(st.layers.filter(l=>l.type==='symbol'));
+  }catch(e){}
+  if(!base.layers.find(l=>l.id==='ign'))base.layers.push({id:'ign',type:'raster',source:'ign'});
+  return base;}
+
+async function initMap(){
+  map=new maplibregl.Map({container:'map',style:await hybrid(),center:[2.4,46.6],zoom:4.9,attributionControl:false,dragRotate:false,pitchWithRotate:false});
+  try{map.touchZoomRotate.disableRotation();}catch(e){}
+  await new Promise(r=>map.on('load',r));
+  try{if(map.getLayer('ign')){map.setPaintProperty('ign','raster-contrast',0.1);map.setPaintProperty('ign','raster-saturation',0.14);}}catch(e){}
+  map.addSource('bdnb',{type:'vector',tiles:[BDNB_TILES],minzoom:14,maxzoom:14});
+  map.addLayer({id:'bdnb-hit',type:'fill',source:'bdnb','source-layer':BDNB_SRC,paint:{'fill-color':'#000','fill-opacity':0}});   /* calque invisible : force le chargement des tuiles */
+  /* quadrillage de l'équipe (contexte, lecture seule) */
+  map.addSource('grid',{type:'geojson',data:fc([])});
+  map.addLayer({id:'grid-fill',type:'fill',source:'grid',paint:{'fill-color':['get','c'],'fill-opacity':0.2}});
+  map.addLayer({id:'grid-line',type:'line',source:'grid',paint:{'line-color':['get','c'],'line-width':1.4,'line-opacity':0.85}});
+  /* zones dessinées */
+  map.addSource('dz',{type:'geojson',data:fc([])});
+  map.addLayer({id:'dz-fill',type:'fill',source:'dz',paint:{'fill-color':['get','c'],'fill-opacity':['case',['==',['get','sel'],1],0.12,0.24]}});
+  map.addLayer({id:'dz-line',type:'line',source:'dz',filter:['!=',['get','att'],1],layout:{'line-join':'round'},paint:{'line-color':['get','c'],'line-width':['case',['==',['get','sel'],1],4.5,2.6]}});
+  map.addLayer({id:'dz-dash',type:'line',source:'dz',filter:['==',['get','att'],1],paint:{'line-color':'#facc15','line-width':['case',['==',['get','sel'],1],4,3],'line-dasharray':[2,1.5]}});
+  /* maisons individuelles (BDNB) */
+  map.addSource('hs',{type:'geojson',data:fc([])});
+  map.addLayer({id:'hs-c',type:'circle',source:'hs',minzoom:14.5,filter:['!=',['get','s'],3],paint:{
+    'circle-radius':['interpolate',['linear'],['zoom'],14.5,['match',['get','s'],1,3.5,2],17,['match',['get','s'],1,7,4],19,['match',['get','s'],1,10,6]],
+    'circle-color':['match',['get','s'],1,['get','dc'],2,'#4b5563','#ffffff'],
+    'circle-opacity':['match',['get','s'],0,0.8,2,0.75,1],
+    'circle-stroke-color':['match',['get','s'],1,'#111827','rgba(17,24,39,.55)'],'circle-stroke-width':['match',['get','s'],1,1.6,0.8]}});
+  /* contour en cours de dessin */
+  map.addSource('dr',{type:'geojson',data:fc([])});
+  map.addLayer({id:'dr-fill',type:'fill',source:'dr',filter:['==',['geometry-type'],'Polygon'],paint:{'fill-color':['get','c'],'fill-opacity':0.18}});
+  map.addLayer({id:'dr-line',type:'line',source:'dr',filter:['==',['geometry-type'],'LineString'],layout:{'line-join':'round','line-cap':'round'},paint:{'line-color':['get','c'],'line-width':3.2}});
+  map.addLayer({id:'dr-pt',type:'circle',source:'dr',filter:['==',['geometry-type'],'Point'],paint:{'circle-radius':['match',['get','k'],'m',6,'a',9,9],'circle-color':['match',['get','k'],'m','rgba(255,255,255,.75)','a','#f07020','#ffffff'],'circle-stroke-color':['match',['get','k'],'a','#ffffff',['get','c']],'circle-stroke-width':['match',['get','k'],'m',2,3]}});
+  map.on('mousedown',vDown);map.on('touchstart',vDown);map.on('mousemove',vMove);map.on('touchmove',vMove);map.on('mouseup',vUp);map.on('touchend',vUp);
+  {const cc=map.getCanvasContainer();cc.addEventListener('pointerdown',pDown);cc.addEventListener('pointermove',pMove);cc.addEventListener('pointerup',pUp);cc.addEventListener('pointercancel',pUp);}
+
+  map.on('sourcedata',e=>{if(e.sourceId==='bdnb'&&e.tile){_bVer++;schedHouses();}});
+  map.on('moveend',schedHouses);
+  map.on('click',onMapClick);
+}
+
+/* ========================= Maisons BDNB ========================= */
+function _tilesKey(){try{const sc=map.style&&map.style.sourceCaches&&map.style.sourceCaches.bdnb;if(sc&&sc.getRenderableIds)return _bVer+'|'+sc.getRenderableIds().join(',');}catch(e){}return null;}
+/* mêmes règles que l'app : « Résidentiel individuel » ou 1 seul logement ; dédoublonnage par identifiant BDNB */
+function buildings(){const tk=_tilesKey();if(tk&&_bMemo&&_bMemo.k===tk)return _bMemo.b;
+  let feats=[];try{feats=map.querySourceFeatures('bdnb',{sourceLayer:BDNB_SRC});}catch(e){}
+  const seen={},b=[];
+  feats.forEach(f=>{const p=f.properties||{};const id=String(p.batiment_groupe_id||'');if(!id||seen[id])return;
+    const indiv=String(p.usage_principal_bdnb_open||'')==='Résidentiel individuel'||parseInt(p.nb_log)===1;if(!indiv)return;
+    const c=centroid(f.geometry);if(!c)return;seen[id]=1;
+    const an=parseInt(p.annee_construction);const d=String(p.classe_bilan_dpe||'').trim().toUpperCase();
+    b.push({id,c,an:(an>1700&&an<2100)?an:null,d:DPE_COLORS[d]?d:''});});
+  if(tk)_bMemo={k:tk,b};return b;}
+/* maisons déjà prises par une AUTRE zone dessinée vivante */
+function claimedIds(exceptCode){const s=new Set();ZONES.forEach(z=>{if(z.code===exceptCode||!alive(z)||!z.ids)return;z.ids.forEach(i=>s.add(i));});return s;}
+/* case du quadrillage faite / en cours depuis moins de 6 mois */
+let GRIDREC=new Set();
+function schedHouses(){clearTimeout(_hT);_hT=setTimeout(refreshHouses,120);}
+function refreshHouses(){if(!map||!map.getSource('hs'))return;
+  const B=buildings();const zSel=SEL?getZone(SEL):null;const wz=WALK?getZone(WALK.code):null;
+  const cl=claimedIds(mode==='draw'?null:(zSel?zSel.code:null));
+  const selIds=zSel&&zSel.ids?new Set(zSel.ids):null;const walkIds=wz&&wz.ids?new Set(wz.ids):null;
+  const drawOn=mode==='draw'&&DRAW.length>=3;const brushOn=mode==='draw'&&DM==='brush'&&!!STROKE;
+  let n=0,nCl=0,nRec=0;const inIds=[];
+  const F=B.map(h=>{let s=0;
+    if(walkIds&&walkIds.has(h.id))s=3;
+    else if(brushOn){if(BR.has(h.id)){s=1;n++;}}
+    else if(drawOn&&pip(h.c,DRAW)){if(cl.has(h.id)){s=2;nCl++;}else{s=1;n++;inIds.push(h);if(GRIDREC.has(Math.floor(h.c[0]/CELL)+'_'+Math.floor(h.c[1]/CELL)))nRec++;}}
+    else if(selIds&&selIds.has(h.id))s=1;
+    else if(cl.has(h.id))s=2;
+    return {type:'Feature',properties:{s,dc:DPE_COLORS[h.d]||'#ffffff'},geometry:{type:'Point',coordinates:h.c}};});
+  map.getSource('hs').setData(fc(F));
+  if(mode==='draw'){_drawStat={n,nCl,nRec,list:inIds,cross:selfCross(DRAW)};renderDraw();}}
+
+/* ========================= Quadrillage de l'équipe (lecture seule) ========================= */
+function parseFR(s){const m=/^\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(String(s||''));if(!m)return 0;let y=+m[3];if(y<100)y+=2000;return new Date(y,+m[2]-1,+m[1]).getTime();}
+function gridCat(c){const e=parseFR(c.dt||c.date);const rec=e?(Date.now()-e)<AGE_MS:!!c.recent;if(!rec)return 'aged';return (c.stat==='terminee'||c.stat==='nonpertinent')?'terminee':'encours';}
+function renderGrid(){if(!map||!map.getSource('grid'))return;GRIDREC=new Set();
+  const F=GRID.map(c=>{const p=String(c.k||'').split('_');const cx=+p[0],cy=+p[1];if(!Number.isFinite(cx)||!Number.isFinite(cy))return null;
+    const cat=gridCat(c);if(cat!=='aged')GRIDREC.add(c.k);
+    const w=cx*CELL,e=(cx+1)*CELL,s=cy*CELL,n=(cy+1)*CELL;
+    return {type:'Feature',properties:{c:CAT_COL[cat]},geometry:{type:'Polygon',coordinates:[[[w,s],[e,s],[e,n],[w,n],[w,s]]]}};}).filter(Boolean);
+  map.getSource('grid').setData(fc(F));}
+
+/* ========================= Zones dessinées (affichage) ========================= */
+function renderZones(){if(!map||!map.getSource('dz'))return;
+  const F=ZONES.filter(alive).map(z=>{const cat=zoneCat(z);return {type:'Feature',properties:{code:z.code,c:CAT_COL[cat],att:cat==='attente'?1:0,sel:z.code===SEL?1:0},geometry:{type:'Polygon',coordinates:[ring(z.pts)]}};});
+  map.getSource('dz').setData(fc(F));
+  zoneChips.forEach(m=>m.remove());zoneChips=[];
+  if(mode==='walk'||mode==='house')return;
+  ZONES.filter(alive).forEach(z=>{const el=document.createElement('div');el.className='zchip';
+    el.innerHTML='<i style="background:'+CAT_COL[zoneCat(z)]+'"></i>'+esc(fmtCode(z.code));
+    el.addEventListener('click',ev=>{ev.stopPropagation();_mkTap=Date.now();if(mode==='draw'||mode==='sim')return;openZone(z.code,true);});
+    zoneChips.push(new maplibregl.Marker({element:el,anchor:'center'}).setLngLat(z.ctr||avg(z.pts)).addTo(map));});}
+
+/* ========================= Panneau ========================= */
+let _lastPanel='';
+function setPanel(html){if(html===_lastPanel)return;_lastPanel=html;$('panel').innerHTML=html;requestAnimationFrame(placeFabs);}   /* même contenu → pas de redessin (un toucher en cours n'est jamais perdu) */
+function placeFabs(){const h=$('panel').offsetHeight||0;$('fabs').style.bottom=(h+16)+'px';$('legend').style.bottom=(h+16)+'px';}
+window.addEventListener('resize',placeFabs);
+function banner(html){const b=$('banner');if(html){b.innerHTML=html;b.classList.add('on');}else{b.classList.remove('on');b.innerHTML='';}}
+
+function dblOn(){try{map.doubleClickZoom.enable();}catch(e){}document.body.classList.remove('tapmode');try{endDrawUi();}catch(e){}}
+function tapMode(){try{map.doubleClickZoom.disable();}catch(e){}document.body.classList.add('tapmode');}   /* dessin / simulation : chaque toucher = un point (pas de zoom, étiquettes traversables) */
+function showIdle(){dblOn();mode='idle';SEL=null;HSEL=null;banner('');renderZones();refreshHouses();
+  const nz=ZONES.filter(alive).length;
+  setPanel('<div class="row"><button class="btn pri" style="flex:2;white-space:nowrap" onclick="startDraw()">'+ic('pen')+'Nouvelle zone</button>'+
+    '<button class="btn sm" onclick="showList()" title="Mes zones">'+ic('list')+(nz?nz:'')+'</button><button class="btn sm" onclick="showCode()">'+ic('key')+'Code</button></div>');}
+
+/* ---------- Dessin : 4 méthodes au choix (sélecteur à droite) ----------
+   Toutes produisent le MÊME contour (DRAW) → on peut commencer avec une méthode et retoucher avec « Points ».
+   pts   : toucher = ajouter un coin (inséré au bon endroit) · glisser un coin = le déplacer · toucher un coin = le retirer · « + » au milieu d'un côté = nouveau coin
+   lasso : entourer la zone d'un trait continu avec le doigt (2 doigts = déplacer la carte)
+   auto  : un toucher → zone des N maisons libres les plus proches (− / + pour ajuster)
+   brush : peindre les maisons au doigt (gomme pour en retirer) → contour calculé autour */
+const DM_LIST=[['pts','Points','pen'],['lasso','Main levée','lasso'],['auto','Auto','spark'],['brush','Pinceau','brush']];
+const DM_HINT={pts:'Touchez pour ajouter un coin · glissez un coin pour le déplacer · touchez-le pour le retirer',
+  lasso:'Entourez la zone d’un seul trait · 2 doigts pour déplacer la carte',
+  auto:'Touchez le centre de la zone : les maisons libres les plus proches sont prises',
+  brush:'Passez le doigt sur les maisons · 2 doigts pour déplacer la carte'};
+let DM=(()=>{try{const m=localStorage.getItem('porteo_zt_dm');return DM_LIST.some(x=>x[0]===m)?m:'pts';}catch(e){return 'pts';}})();
+let HIST=[], BR=new Set(), ERASE=false, AUTO={c:null,n:50}, STROKE=null, _ptrs=new Set(), _vDrag=null, _rT=0;
+const BR_R=18, BLOB_R=20, BRUSH_BLOB_R=14, BLOB_CELL=4;   /* pinceau : contour plus serré (on ne happe pas la rangée de derrière) */
+function snap(){HIST.push({d:DRAW.map(p=>p.slice()),b:[...BR],a:AUTO.c?{c:AUTO.c.slice(),n:AUTO.n}:{c:null,n:AUTO.n}});if(HIST.length>60)HIST.shift();}
+function undoDraw(){const s=HIST.pop();if(!s)return;DRAW=s.d;BR=new Set(s.b);AUTO=s.a;afterEdit();}
+function clearDraw(){if(!DRAW.length&&!BR.size)return;snap();DRAW=[];BR=new Set();AUTO.c=null;afterEdit();}
+function afterEdit(){drawLayer();refreshHouses();renderDraw();}
+function startDraw(){
+  if(map.getZoom()<DRAW_MIN_ZOOM){map.easeTo({zoom:16.2,duration:600});toast('Zoomez sur le quartier à prospecter.');}
+  tapMode();document.body.classList.add('drawing');
+  mode='draw';DRAW=[];HIST=[];BR=new Set();AUTO={c:null,n:AUTO.n||50};ERASE=false;SEL=null;_drawStat={n:0};
+  banner('');renderZones();setMethod(DM,true);}
+function setMethod(m,silent){DM=m;try{localStorage.setItem('porteo_zt_dm',m);}catch(e){}
+  try{if(m==='lasso'||m==='brush')map.dragPan.disable();else map.dragPan.enable();}catch(e){}
+  document.querySelectorAll('#dm button').forEach(b=>b.classList.toggle('on',b.dataset.m===m));
+  if(m==='brush'){BR=new Set(buildings().filter(h=>DRAW.length>=3&&pip(h.c,DRAW)).map(h=>h.id));}   /* on repart de la zone actuelle */
+  STROKE=null;afterEdit();if(!silent)toast(DM_HINT[m],3200);}
+function endDrawUi(){document.body.classList.remove('drawing');STROKE=null;_vDrag=null;AUTO.c=null;try{map.dragPan.enable();}catch(e){}}
+function cancelDraw(){DRAW=[];BR=new Set();showIdle();drawLayer();}
+function mDist(a,b){const lat0=(a[1]+b[1])/2,A=mXY(a,lat0),B=mXY(b,lat0);return Math.hypot(A[0]-B[0],A[1]-B[1]);}
+
+/* Points : nouveau coin inséré là où il allonge le moins le contour (plus de contour qui se croise en rattrapant un oubli) */
+function addPt(ll){if(map.getZoom()<DRAW_MIN_ZOOM-0.5){toast('Zoomez davantage pour dessiner précisément.');return;}
+  if(DRAW.length>=80){toast('80 coins maximum.');return;}snap();
+  if(DRAW.length<3)DRAW.push(ll);
+  else{let bi=0,bv=Infinity;for(let i=0;i<DRAW.length;i++){const a=DRAW[i],b=DRAW[(i+1)%DRAW.length];const v=mDist(a,ll)+mDist(ll,b)-mDist(a,b);if(v<bv){bv=v;bi=i;}}DRAW.splice(bi+1,0,ll);}
+  afterEdit();}
+function hitAt(pt,layers,kind){let L=[];try{L=map.queryRenderedFeatures([[pt.x-16,pt.y-16],[pt.x+16,pt.y+16]],{layers});}catch(e){return null;}   /* poignée la PLUS PROCHE du doigt */
+  let best=null,bd=Infinity;L.forEach(f=>{if(kind&&f.properties.k!==kind)return;const q=map.project(f.geometry.coordinates);const d=Math.hypot(q.x-pt.x,q.y-pt.y);if(d<bd){bd=d;best=f;}});return best;}
+function vDown(e){if(mode!=='draw'||DM!=='pts')return;const pt=e.point;const f=hitAt(pt,['dr-pt']);if(!f||f.properties.k!=='v')return;
+  e.preventDefault();_vDrag={i:f.properties.i,x:pt.x,y:pt.y,moved:false,s:false};try{map.dragPan.disable();}catch(x){}}
+function vMove(e){if(!_vDrag)return;const pt=e.point;if(!_vDrag.moved&&Math.hypot(pt.x-_vDrag.x,pt.y-_vDrag.y)<6)return;
+  if(!_vDrag.s){snap();_vDrag.s=true;}_vDrag.moved=true;DRAW[_vDrag.i]=[e.lngLat.lng,e.lngLat.lat];drawLayer();
+  clearTimeout(_rT);_rT=setTimeout(refreshHouses,60);}
+function vUp(){if(!_vDrag)return;const d=_vDrag;_vDrag=null;_mkTap=Date.now();try{if(DM==='pts')map.dragPan.enable();}catch(x){}
+  if(!d.moved){snap();DRAW.splice(d.i,1);toast('Coin retiré');}afterEdit();}
+
+/* Main levée / pinceau : traits au doigt (un 2ᵉ doigt annule le trait → on déplace / zoome la carte) */
+function evLL(ev){const r=map.getCanvasContainer().getBoundingClientRect();const p=[ev.clientX-r.left,ev.clientY-r.top];const l=map.unproject(p);return {ll:[l.lng,l.lat],p};}
+function pDown(ev){_ptrs.add(ev.pointerId);if(mode!=='draw'||(DM!=='lasso'&&DM!=='brush'))return;
+  if(_ptrs.size>1){if(STROKE){STROKE=null;if(DM==='lasso')drawLayer();}return;}
+  if(ev.button>0)return;const {ll,p}=evLL(ev);STROKE={pts:[ll],last:p,snap:false};
+  if(DM==='brush'){snap();STROKE.snap=true;paintAt(ll,null);clearTimeout(_rT);_rT=setTimeout(refreshHouses,40);}}
+function pMove(ev){if(!STROKE||!_ptrs.has(ev.pointerId))return;const {ll,p}=evLL(ev);if(Math.hypot(p[0]-STROKE.last[0],p[1]-STROKE.last[1])<4)return;
+  const prev=STROKE.pts[STROKE.pts.length-1];STROKE.pts.push(ll);STROKE.last=p;
+  if(DM==='lasso'){strokeLayer();}
+  else{paintAt(ll,prev);clearTimeout(_rT);_rT=setTimeout(refreshHouses,50);}}
+function pUp(ev){_ptrs.delete(ev.pointerId);if(!STROKE)return;const s=STROKE;STROKE=null;
+  if(DM==='lasso'){if(s.pts.length<8){drawLayer();return;}
+    let poly=simplifyRing(s.pts,3);if(poly.length<3){drawLayer();return;}snap();DRAW=poly;afterEdit();}
+  else{blobFromBrush();}}
+function paintAt(ll,prev){const B=buildings();const pts=[ll];
+  if(prev){const d=mDist(prev,ll);const n=Math.floor(d/6);for(let k=1;k<n;k++)pts.push([prev[0]+(ll[0]-prev[0])*k/n,prev[1]+(ll[1]-prev[1])*k/n]);}
+  const cl=claimedIds(null);const dLon=BR_R/(111320*Math.cos(ll[1]*Math.PI/180)),dLat=BR_R/110540;
+  pts.forEach(q=>B.forEach(h=>{if(Math.abs(h.c[0]-q[0])>dLon||Math.abs(h.c[1]-q[1])>dLat)return;if(mDist(h.c,q)>BR_R)return;
+    if(ERASE)BR.delete(h.id);else if(!cl.has(h.id))BR.add(h.id);}));}
+function blobFromBrush(){const B=buildings().filter(h=>BR.has(h.id));
+  if(!B.length){DRAW=[];afterEdit();return;}
+  const r=blobPoly(B.map(h=>h.c),BRUSH_BLOB_R);DRAW=r.poly;afterEdit();
+  if(r.parts>1)toast('Maisons trop éloignées : seul le plus grand groupe forme la zone.',3500);}
+function strokeLayer(){if(!STROKE)return;map.getSource('dr').setData(fc([{type:'Feature',properties:{c:'#ffffff'},geometry:{type:'LineString',coordinates:STROKE.pts}}]));}
+
+/* Auto : N maisons libres les plus proches du point touché (hors zones dessinées et zones de l'équipe faites < 6 mois) */
+function autoAt(ll){snap();AUTO.c=ll;buildAuto();}
+function autoStep(d){if(!AUTO.c){toast('Touchez d’abord le centre de la zone.');return;}const n=Math.max(MIN_H,Math.min(MAX_H,AUTO.n+d));if(n===AUTO.n)return;snap();AUTO.n=n;buildAuto();}
+function buildAuto(){const cl=claimedIds(null);const c=AUTO.c;
+  const L=buildings().filter(h=>!cl.has(h.id)&&!GRIDREC.has(Math.floor(h.c[0]/CELL)+'_'+Math.floor(h.c[1]/CELL))).map(h=>({h,d:mDist(h.c,c)})).filter(x=>x.d<900).sort((a,b)=>a.d-b.d).slice(0,AUTO.n);
+  if(L.length<MIN_H){DRAW=[];afterEdit();toast('Pas assez de maisons libres autour de ce point ('+L.length+').',3500);return;}
+  const r=blobPoly(L.map(x=>x.h.c),BLOB_R);DRAW=r.poly;afterEdit();}
+
+/* Contour « enveloppe » d'un groupe de maisons : grille 4 m → disques de R m → fermeture (bouche les petits creux)
+   → trous remplis → plus grand morceau → bord tracé → simplifié. Robuste, sans contour qui se croise. */
+function blobPoly(pts,R){const lat0=pts.reduce((a,p)=>a+p[1],0)/pts.length,kx=111320*Math.cos(lat0*Math.PI/180),ky=110540,g=BLOB_CELL,K=3;
+  const P=pts.map(p=>[p[0]*kx,p[1]*ky]);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;P.forEach(p=>{x0=Math.min(x0,p[0]);y0=Math.min(y0,p[1]);x1=Math.max(x1,p[0]);y1=Math.max(y1,p[1]);});
+  const pad=R+(K+2)*g;x0-=pad;y0-=pad;x1+=pad;y1+=pad;const W=Math.ceil((x1-x0)/g),H=Math.ceil((y1-y0)/g);
+  let G=new Uint8Array(W*H);const rc=Math.ceil(R/g);
+  P.forEach(p=>{const ci=Math.floor((p[0]-x0)/g),cj=Math.floor((p[1]-y0)/g);
+    for(let j=cj-rc;j<=cj+rc;j++)for(let i=ci-rc;i<=ci+rc;i++){if(i<0||j<0||i>=W||j>=H)continue;const cx=x0+(i+.5)*g-p[0],cy=y0+(j+.5)*g-p[1];if(cx*cx+cy*cy<=R*R)G[j*W+i]=1;}});
+  const morph=(S,v)=>{const O=new Uint8Array(W*H);for(let j=0;j<H;j++)for(let i=0;i<W;i++){let r=v?0:1;
+      for(let dj=-K;dj<=K&&(v?!r:r);dj++)for(let di=-K;di<=K;di++){const a=i+di,b=j+dj;const s=(a<0||b<0||a>=W||b>=H)?0:S[b*W+a];if(v&&s){r=1;break;}if(!v&&!s){r=0;break;}}O[j*W+i]=r;}return O;};
+  G=morph(morph(G,1),0);                                                   /* fermeture : dilatation puis érosion */
+  const out=new Uint8Array(W*H),Q=[];for(let i=0;i<W;i++){Q.push(i,(H-1)*W+i);}for(let j=0;j<H;j++){Q.push(j*W,j*W+W-1);}
+  while(Q.length){const k=Q.pop();if(out[k]||G[k])continue;out[k]=1;const i=k%W,j=(k-i)/W;if(i>0)Q.push(k-1);if(i<W-1)Q.push(k+1);if(j>0)Q.push(k-W);if(j<H-1)Q.push(k+W);}
+  for(let k=0;k<W*H;k++)if(!out[k])G[k]=1;                                 /* trous remplis */
+  const lab=new Int32Array(W*H);let nl=0,best=0,bestN=0;
+  for(let k=0;k<W*H;k++){if(!G[k]||lab[k])continue;nl++;let n=0;const S=[k];lab[k]=nl;
+    while(S.length){const q=S.pop();n++;const i=q%W,j=(q-i)/W;[[i-1,j],[i+1,j],[i,j-1],[i,j+1]].forEach(([a,b])=>{if(a<0||b<0||a>=W||b>=H)return;const t=b*W+a;if(G[t]&&!lab[t]){lab[t]=nl;S.push(t);}});}
+    if(n>bestN){bestN=n;best=nl;}}
+  const on=(i,j)=>i>=0&&j>=0&&i<W&&j<H&&lab[j*W+i]===best;
+  const E=new Map();const add=(a,b,c,d)=>{const k=a+','+b;(E.get(k)||E.set(k,[]).get(k)).push([c,d]);};
+  for(let j=0;j<H;j++)for(let i=0;i<W;i++){if(!on(i,j))continue;
+    if(!on(i,j-1))add(i,j,i+1,j);if(!on(i+1,j))add(i+1,j,i+1,j+1);if(!on(i,j+1))add(i+1,j+1,i,j+1);if(!on(i-1,j))add(i,j+1,i,j);}
+  let loop=[],bestA=-1;
+  for(const st of Array.from(E.keys())){while(E.get(st)&&E.get(st).length){
+    let [cx,cy]=st.split(',').map(Number),dx=0,dy=0,guard=0;const sx=cx,sy=cy,L0=[];
+    do{const L=E.get(cx+','+cy);if(!L||!L.length)break;let k=0;
+      if(L.length>1){k=L.findIndex(([a,b])=>dx*(b-cy)-dy*(a-cx)>0);if(k<0)k=0;}   /* croisement : on tourne à gauche */
+      const [nx,ny]=L.splice(k,1)[0];dx=nx-cx;dy=ny-cy;L0.push([cx,cy]);cx=nx;cy=ny;}while((cx!==sx||cy!==sy)&&++guard<200000);
+    let A=0;for(let q=0;q<L0.length;q++){const u=L0[q],v=L0[(q+1)%L0.length];A+=u[0]*v[1]-v[0]*u[1];}A=Math.abs(A);
+    if(A>bestA){bestA=A;loop=L0;}}}
+  const ring=loop.map(([i,j])=>[(x0+i*g)/kx,(y0+j*g)/ky]);
+  let tol=4,poly=simplifyRing(ring,tol);while(poly.length>24&&tol<12){tol+=1.5;poly=simplifyRing(ring,tol);}   /* ≤ 24 coins : facile à retoucher avec « Points » */
+  return {poly,parts:nl};}
+/* Douglas-Peucker sur un contour fermé (tolérance en mètres) */
+function simplifyRing(R,tol){if(R.length<4)return R.slice();const lat0=R[0][1];const P=R.map(p=>mXY(p,lat0));
+  let far=0,fd=-1;P.forEach((p,i)=>{const d=Math.hypot(p[0]-P[0][0],p[1]-P[0][1]);if(d>fd){fd=d;far=i;}});
+  const keep=new Uint8Array(P.length);keep[0]=keep[far]=1;
+  const dp=(a,b,pts)=>{let md=-1,mi=-1;const [ax,ay]=pts[a],[bx,by]=pts[b];const L=Math.hypot(bx-ax,by-ay)||1e-9;
+    for(let i=a+1;i<b;i++){const d=Math.abs((bx-ax)*(ay-pts[i][1])-(ax-pts[i][0])*(by-ay))/L;if(d>md){md=d;mi=i;}}
+    if(md>tol){keep[mi]=1;dp(a,mi,pts);dp(mi,b,pts);}};
+  dp(0,far,P);const P2=P.concat([P[0]]);const k2=new Uint8Array(P2.length);
+  (function dp2(a,b){let md=-1,mi=-1;const [ax,ay]=P2[a],[bx,by]=P2[b];const L=Math.hypot(bx-ax,by-ay)||1e-9;
+    for(let i=a+1;i<b;i++){const d=Math.abs((bx-ax)*(ay-P2[i][1])-(ax-P2[i][0])*(by-ay))/L;if(d>md){md=d;mi=i;}}
+    if(md>tol){k2[mi]=1;dp2(a,mi);dp2(mi,b);}})(far,P2.length-1);
+  const out=[];for(let i=0;i<P.length;i++)if(keep[i]||k2[i])out.push(R[i]);return out;}
+
+function drawCol(){const s=_drawStat;if(DRAW.length<3)return '#ffffff';if(s.cross)return '#ef4444';return s.n<MIN_H?'#f59e0b':(s.n>MAX_H?'#ef4444':'#16a34a');}
+function drawLayer(){if(!map.getSource('dr'))return;const c=drawCol();const F=[];
+  if(DRAW.length>=3)F.push({type:'Feature',properties:{c},geometry:{type:'Polygon',coordinates:[ring(DRAW)]}});
+  if(DRAW.length>=2)F.push({type:'Feature',properties:{c},geometry:{type:'LineString',coordinates:DRAW.length>=3?ring(DRAW):DRAW}});
+  if(mode==='draw'&&DM==='pts'){DRAW.forEach((p,i)=>F.push({type:'Feature',properties:{c,i,k:'v'},geometry:{type:'Point',coordinates:p}}));
+    if(DRAW.length>=3)DRAW.forEach((p,i)=>{const q=DRAW[(i+1)%DRAW.length];F.push({type:'Feature',properties:{c,i,k:'m'},geometry:{type:'Point',coordinates:[(p[0]+q[0])/2,(p[1]+q[1])/2]}});});}
+  if(mode==='draw'&&DM==='auto'&&AUTO.c)F.push({type:'Feature',properties:{c,k:'a'},geometry:{type:'Point',coordinates:AUTO.c}});
+  map.getSource('dr').setData(fc(F));}
+function renderDraw(){if(mode!=='draw')return;drawLayer();const s=_drawStat,np=DRAW.length;
+  let cls='',big,sub;
+  if(np<3){big=DM==='brush'&&BR.size?BR.size:'–';sub=DM==='brush'&&BR.size?'maisons peintes':'Pas encore de zone';}
+  else if(s.cross){cls='high';big='!';sub='Contour croisé';}
+  else if(s.n<MIN_H){cls='low';big=s.n;sub='encore '+(MIN_H-s.n)+' min.';}
+  else if(s.n>MAX_H){cls='high';big=s.n;sub='max '+MAX_H;}
+  else{cls='good';big=s.n;sub='maisons ✓';}
+  const ok=np>=3&&!s.cross&&s.n>=MIN_H&&s.n<=MAX_H;
+  let extra='';
+  if(DM==='auto')extra='<div class="dstep"><button onclick="autoStep(-10)" '+(AUTO.c&&AUTO.n>MIN_H?'':'disabled')+'>−</button><span>'+AUTO.n+' maisons visées</span><button onclick="autoStep(10)" '+(AUTO.c&&AUTO.n<MAX_H?'':'disabled')+'>+</button></div>';
+  if(DM==='brush')extra='<div class="dseg"><button class="'+(ERASE?'':'on')+'" onclick="ERASE=false;renderDraw()">'+ic('brush')+'Pinceau</button><button class="'+(ERASE?'on':'')+'" onclick="ERASE=true;renderDraw()">'+ic('eraser')+'Gomme</button></div>';
+  const w=[];if(np>=3&&s.nCl)w.push(s.nCl+' déjà dans une autre zone (non comptées)');if(np>=3&&s.nRec)w.push(s.nRec+' dans une zone équipe < 6 mois');
+  setPanel('<div class="dbar"><div class="dpill '+cls+'"><b>'+big+'</b><span>'+sub+'</span></div>'+
+    '<button class="dic" onclick="undoDraw()" title="Annuler" '+(HIST.length?'':'disabled')+'>'+ic('undo')+'</button>'+
+    '<button class="dic" onclick="clearDraw()" title="Effacer" '+(np||BR.size?'':'disabled')+'>'+ic('trash')+'</button>'+
+    '<button class="dic" onclick="cancelDraw()" title="Quitter">'+ic('x')+'</button>'+
+    '<button class="dok" onclick="validateDraw()" '+(ok?'':'disabled')+'>'+ic('check')+'Créer</button></div>'+extra+
+    '<div class="dhint">'+(w.length?'<span class="dw">'+esc(w.join(' · '))+'</span>':esc(DM_HINT[DM]))+'</div>');}
+function validateDraw(){refreshHouses();const s=_drawStat;
+  if(DRAW.length<3||s.cross||s.n<MIN_H||s.n>MAX_H){renderDraw();return;}
+  const code=genCode();if(!code){toast('Impossible de générer un code, réessayez.');return;}
+  const z=buildZone(code,DRAW.slice(),Date.now(),s.list);z.by=ME.name||'';z.m=DM;
+  ZONES.push(z);saveZones();DRAW=[];BR=new Set();endDrawUi();mode='zone';drawLayer();
+  toast('Zone '+fmtCode(code)+' créée — '+z.n+' maisons');openZone(code,false);}
+function buildZone(code,pts,created,list){
+  const h={};list.forEach(b=>{h[b.id]=[+b.c[0].toFixed(6),+b.c[1].toFixed(6),b.d||'',b.an||0];});
+  const ids=list.map(b=>b.id);const m=avg(pts);let best=null,bd=Infinity;
+  list.forEach(b=>{const d=(b.c[0]-m[0])**2+(b.c[1]-m[1])**2;if(d<bd){bd=d;best=b.c;}});   /* point central = maison la plus proche du centre */
+  return {code,pts,created,status:'attente',n:ids.length,ids,h,st:{},ad:{},ctr:best?[+best[0].toFixed(6),+best[1].toFixed(6)]:m};}
+/* zone reçue par lien : maisons calculées sur place une fois les tuiles chargées */
+function fillZoneHouses(z){const cl=claimedIds(z.code);const list=buildings().filter(b=>pip(b.c,z.pts)&&!cl.has(b.id));
+  if(!list.length)return false;const nz=buildZone(z.code,z.pts,z.created,list);Object.assign(z,{n:nz.n,ids:nz.ids,h:nz.h,ctr:nz.ctr});saveZones();return true;}
+function whenZoneLoaded(z,cb){map.fitBounds(bboxOf(z.pts),{padding:{top:90,bottom:Math.min(380,innerHeight*0.5),left:40,right:40},maxZoom:17.2,duration:500});
+  let done=false;const go=()=>{if(done)return;done=true;cb();};map.once('idle',()=>setTimeout(go,150));setTimeout(go,9000);}
+
+/* ---------- Carte d'une zone ---------- */
+function openZone(code,fly){dblOn();const z=getZone(code);if(!z){toast('Zone introuvable (expirée ?)');showIdle();return;}
+  mode='zone';SEL=code;banner('');renderZones();
+  if(!z.ids){let tries=0;const fill=()=>{if(fillZoneHouses(z)){renderZones();refreshHouses();if(SEL===code&&mode==='zone')renderZoneCard();return;}
+      if(++tries<4){setTimeout(fill,1500);return;}z.noH=1;if(SEL===code&&mode==='zone')renderZoneCard();};
+    z.noH=0;whenZoneLoaded(z,fill);renderZoneCard();return;}
+  if(fly)map.fitBounds(bboxOf(z.pts),{padding:{top:90,bottom:Math.min(380,innerHeight*0.5),left:40,right:40},maxZoom:17.2,duration:500});
+  refreshHouses();renderZoneCard();}
+function dpeBar(z){const c={A:0,B:0,C:0,D:0,E:0,F:0,G:0,'':0};(z.ids||[]).forEach(i=>{const h=z.h[i];c[(h&&h[2])||'']++;});
+  return '<div class="dpebar">'+'ABCDEFG'.split('').map(L=>'<div class="'+(c[L]?'':'z')+'" style="background:'+DPE_COLORS[L]+';color:'+(L==='F'||L==='G'||L==='A'?'#fff':'#111827')+'">'+L+'<span>'+c[L]+'</span></div>').join('')+
+    '<div class="'+(c['']?'':'z')+'" style="background:#e5e7eb">?<span>'+c['']+'</span></div></div>';}
+function zoneCounts(z){let d=0,r=0;(z.ids||[]).forEach(i=>{const s=z.st[i];if(s&&s.r!=='x'){d++;if(s.r==='r')r++;}});return {d,r,n:(z.ids||[]).length};}
+function renderZoneCard(){const z=getZone(SEL);if(!z||mode!=='zone')return;const cat=zoneCat(z),k=zoneCounts(z);
+  let info;
+  if(!z.ids)info='<div class="zi">'+(z.noH?'Aucune maison trouvée : zoomez sur la zone puis rouvrez-la.':'Recherche des maisons…')+'</div>';
+  else info='<div class="zi"><b>'+k.n+' maisons</b>'+(z.status!=='attente'?' · '+k.d+' faite'+(k.d>1?'s':'')+(k.r?' · '+k.r+' RDV':''):'')+
+    (z.status==='attente'?' · <span class="xpi">expire dans '+fmtLeft(z.created+TTL_MS-Date.now())+'</span>':(z.status==='terminee'?' · terminée le '+fmtDT(z.doneAt):''))+'</div>'+dpeBar(z);
+  const resume=z.status==='encours'&&z.locAt&&(Date.now()-z.locAt)<RESUME_MS;
+  const main=resume?'<button class="btn blue sm" style="width:100%" onclick="startWalk(\''+z.code+'\')">'+ic('flag')+'Reprendre le parcours</button>'
+    :'<button class="btn pri sm" style="width:100%" onclick="locateFor(\''+z.code+'\')" '+(z.ids?'':'disabled')+'>'+ic('pin')+(z.status==='terminee'?'Me localiser pour la refaire':'Me localiser pour commencer')+'</button>';
+  const ib=(f,i,l)=>'<button onclick="'+f+'">'+ic(i)+'<span>'+l+'</span></button>';
+  setPanel('<div class="zh"><span class="code">'+esc(fmtCode(z.code))+'</span><span class="st '+cat+'">'+CAT_LBL[cat]+'</span>'+
+      '<button class="dic" style="margin-left:auto;width:34px;height:34px" onclick="showIdle()" title="Fermer">'+ic('x')+'</button></div>'+info+
+    '<div class="ib">'+ib("copyCode('"+z.code+"')",'copy','Copier')+ib("shareZone('"+z.code+"')",'share','Envoyer')+ib("goTo('"+z.code+"','g')",'nav','Maps')+ib("goTo('"+z.code+"','w')",'nav','Waze')+'</div>'+
+    main+'<div style="display:flex;justify-content:space-between">'+
+    '<button class="lnk" onclick="startSim(\''+z.code+'\')">Simuler ma position (test)</button>'+
+    '<button class="lnk red" onclick="delZone(\''+z.code+'\')">Supprimer</button></div>');}
+function copyCode(code){const t=fmtCode(code);
+  const ok=()=>toast('Code '+t+' copié');
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(t).then(ok,()=>fallbackCopy(t)&&ok());}else if(fallbackCopy(t))ok();}
+function fallbackCopy(t){try{const a=document.createElement('textarea');a.value=t;a.style.position='fixed';a.style.opacity='0';document.body.appendChild(a);a.select();const r=document.execCommand('copy');a.remove();return r;}catch(e){return false;}}
+function shareZone(code){const z=getZone(code);if(!z)return;
+  const txt='Zone Porteo '+fmtCode(code)+' — '+z.n+' maisons. Ouvrir la zone : '+shareUrl(z);
+  if(navigator.share){navigator.share({text:txt}).catch(()=>{});return;}
+  location.href='sms:?&body='+encodeURIComponent(txt);}
+function goTo(code,app){const z=getZone(code);if(!z)return;const c=z.ctr||avg(z.pts);
+  const u=app==='w'?'https://waze.com/ul?ll='+c[1]+','+c[0]+'&navigate=yes':'https://www.google.com/maps/dir/?api=1&destination='+c[1]+','+c[0];window.open(u,'_blank');}
+function delZone(code){const z=getZone(code);if(!z)return;
+  modal('<div class="h1">Supprimer la zone '+esc(fmtCode(code))+' ?</div><div class="muted">Uniquement sur ce téléphone (maquette).</div><div class="gap"></div><div class="row"><button class="btn" onclick="closeModal()">Annuler</button><button class="btn" style="background:#b91c1c;color:#fff" onclick="closeModal();reallyDel(\''+code+'\')">Supprimer</button></div>');}
+function reallyDel(code){ZONES=ZONES.filter(z=>z.code!==code);saveZones();toast('Zone supprimée');showIdle();}
+
+/* ---------- Mes zones / code ---------- */
+function showList(){mode='list';SEL=null;renderZones();refreshHouses();
+  const L=ZONES.filter(alive).slice().sort((a,b)=>b.created-a.created);
+  setPanel('<div class="zh"><div class="h1" style="margin:0">Mes zones</div><button class="lnk" style="margin-left:auto" onclick="showIdle()">Fermer</button></div>'+
+    (L.length?L.map(z=>{const cat=zoneCat(z),k=zoneCounts(z);
+      return '<div class="zl" onclick="openZone(\''+z.code+'\',true)"><span class="sw" style="background:'+CAT_COL[cat]+';width:12px;height:36px;border-radius:4px"></span><div class="grow"><b>'+esc(fmtCode(z.code))+'</b> <span class="st '+cat+'" style="padding:2px 8px">'+CAT_LBL[cat]+'</span>'+
+        '<div class="muted">'+(z.ids?k.n+' maisons':'…')+(z.status!=='attente'?' · '+k.d+' faites':'')+' · '+(z.status==='attente'?'expire dans '+fmtLeft(z.created+TTL_MS-Date.now()):'créée le '+fmtDT(z.created))+'</div></div></div>';}).join('')
+     :'<div class="muted" style="padding:10px 0">Aucune zone pour l’instant.</div>'));}
+function showCode(){mode='code';SEL=null;renderZones();refreshHouses();
+  setPanel('<div class="zh"><div class="h1" style="margin:0">Ouvrir un code</div><button class="lnk" style="margin-left:auto" onclick="showIdle()">Fermer</button></div><div class="gap6"></div>'+
+    '<input id="cin" class="codein" maxlength="7" placeholder="ABC-123" autocomplete="off" autocapitalize="characters" spellcheck="false"><div class="gap6"></div>'+
+    '<button class="btn pri" style="width:100%" onclick="openCode()">Ouvrir la zone</button>'+
+    '<div class="muted" style="margin-top:8px">Maquette : seuls les codes créés ou reçus (lien SMS) sur ce téléphone sont reconnus.</div>');
+  const i=$('cin');i.addEventListener('keydown',e=>{if(e.key==='Enter')openCode();});setTimeout(()=>{try{i.focus();}catch(e){}},50);}
+function openCode(){const c=normCode(($('cin')||{}).value);if(c.length!==6){toast('Le code contient 6 caractères.');return;}
+  const z=getZone(c);if(!z){toast('Code inconnu ou expiré.');return;}openZone(c,true);}
+
+/* ========================= Localisation ========================= */
+function startSim(code){tapMode();mode='sim';SEL=code;renderZones();
+  banner('Mode test : touchez la carte à l’endroit où vous êtes<small>Ce point remplace le GPS pour cette tentative.</small>');
+  setPanel('<div class="muted">Touchez la carte pour simuler votre position.</div><div class="gap6"></div><button class="btn" style="width:100%" onclick="openZone(\''+code+'\')">Annuler</button>');}
+function showMe(ll,sim){if(!meMarker){const el=document.createElement('div');el.className='me';meMarker=new maplibregl.Marker({element:el}).setLngLat(ll).addTo(map);}
+  meMarker.getElement().classList.toggle('sim',!!sim);meMarker.setLngLat(ll);}
+function locateFor(code){if(!navigator.geolocation){toast('GPS indisponible sur cet appareil.');return;}
+  toast('Localisation en cours…',8000);
+  navigator.geolocation.getCurrentPosition(p=>{tryLocate(code,[p.coords.longitude,p.coords.latitude],p.coords.accuracy,false);},
+    e=>{toast(e&&e.code===1?'Accès à la position refusé : autorisez la localisation pour ce site.':'Position introuvable, réessayez à l’extérieur.',4000);},
+    {enableHighAccuracy:true,timeout:15000,maximumAge:0});}
+function tryLocate(code,ll,acc,sim){const z=getZone(code);if(!z){toast('Zone expirée.');showIdle();return;}showMe(ll,sim);
+  const inside=pip(ll,z.pts),d=inside?0:distToPolyM(ll,z.pts);
+  if(!inside&&d>TOL_M){dblOn();mode='zone';SEL=code;banner('');renderZoneCard();
+    map.fitBounds(bboxOf(z.pts.concat([ll])),{padding:{top:90,bottom:Math.min(380,innerHeight*0.5),left:40,right:40},maxZoom:17,duration:500});
+    toast('Vous êtes à '+(d>=1000?(d/1000).toFixed(1).replace('.',',')+' km':Math.round(d)+' m')+' de la zone. Rendez-vous sur place (bouton « Y aller ») puis réessayez.',5000);return;}
+  if(z.status!=='encours'){z.status='encours';z.startedAt=Date.now();z.doneAt=null;}
+  z.locAt=Date.now();z.loc={ll,acc:acc||null,sim:!!sim,t:Date.now()};saveZones();
+  toast((sim?'Position simulée : ':'')+'vous êtes dans la zone '+fmtCode(code)+(acc?' (précision '+Math.round(acc)+' m)':''));
+  startWalk(code);}
+
+/* ========================= Parcours ========================= */
+function startWalk(code){const z=getZone(code);if(!z||!z.ids)return;dblOn();WALK={code};SEL=code;mode='walk';HSEL=null;banner('');
+  document.body.classList.add('walking');renderZones();
+  map.fitBounds(bboxOf(z.ids.map(i=>z.h[i]).filter(Boolean).map(h=>[h[0],h[1]])),{padding:{top:80,bottom:Math.min(300,innerHeight*0.42),left:30,right:30},maxZoom:18.2,duration:500});
+  renderPins();refreshHouses();renderWalk();geocodeZone(z);}
+function walkTop(){const z=getZone(WALK&&WALK.code);if(!z)return;const k=zoneCounts(z);const t=$('wtop');t.classList.add('on');
+  t.innerHTML='<div><b>'+esc(fmtCode(z.code))+'</b><div style="color:#cbd5e1;font-size:12px">'+(k.r?k.r+' RDV · ':'')+'parcours libre</div></div><div class="cnt">'+k.d+'<small> / '+k.n+' portes</small></div>';}
+function renderWalk(){if(mode!=='walk')return;walkTop();
+  setPanel('<div class="muted" style="margin-bottom:8px">Touchez une maison pour noter le résultat. Seules les maisons de la zone peuvent être notées.</div>'+
+    '<div class="row"><button class="btn sm" onclick="drawNext()">'+ic('plus')+'Nouvelle zone à côté</button><button class="btn sm ok" onclick="finishZone()">'+ic('check')+'Terminer</button></div>'+
+    '<div style="text-align:center"><button class="lnk" onclick="quitWalk()">Quitter le parcours</button></div>');}
+function pinLabel(z,id){const a=z.ad[id];return a&&a[0]?a[0]:'•';}
+function renderPins(){walkPins.forEach(m=>m.remove());walkPins.clear();const z=getZone(WALK&&WALK.code);if(!z)return;
+  z.ids.forEach(id=>{const h=z.h[id];if(!h)return;const el=document.createElement('div');el.dataset.id=id;
+    el.addEventListener('click',ev=>{ev.stopPropagation();ev.preventDefault();_mkTap=Date.now();openHouse(id);});
+    walkPins.set(id,new maplibregl.Marker({element:el,anchor:'center'}).setLngLat([h[0],h[1]]).addTo(map));paintPin(z,id);});}
+function paintPin(z,id){const m=walkPins.get(id);if(!m)return;const el=m.getElement(),h=z.h[id],s=z.st[id];
+  ['a','n','r','x','sel'].forEach(c=>el.classList.remove(c));el.classList.add('hp');if(s)el.classList.add(s.r);if(HSEL===id)el.classList.add('sel');   /* classList : on garde les classes de positionnement MapLibre */
+  el.innerHTML=esc(pinLabel(z,id))+(h&&h[2]?'<i style="background:'+DPE_COLORS[h[2]]+';color:'+(h[2]==='F'||h[2]==='G'||h[2]==='A'?'#fff':'#111827')+'">'+h[2]+'</i>':'');}
+function openHouse(id){const z=getZone(WALK&&WALK.code);if(!z)return;const prev=HSEL;HSEL=id;mode='house';if(prev)paintPin(z,prev);paintPin(z,id);
+  const h=z.h[id],a=z.ad[id],s=z.st[id];
+  const title=a&&a[0]?esc(a[0]+' '+(a[1]||'')):(a&&a[1]?'Sans numéro — '+esc(a[1]):'Adresse en cours de recherche…');
+  setPanel('<div class="zh"><div class="h1" style="margin:0">'+title+'</div><button class="lnk" style="margin-left:auto" onclick="backWalk()">Retour</button></div>'+
+    '<div class="muted">'+(h&&h[2]?'DPE <b style="color:var(--ink)">'+h[2]+'</b>':'DPE inconnu')+(h&&h[3]?' · construite en '+h[3]:'')+(s?' · <b style="color:var(--ink)">'+RES[s.r].l+'</b> le '+fmtDT(s.t):'')+'</div><div class="gap"></div>'+
+    '<div class="stbtns">'+['a','n','r','x'].map(r=>'<button class="btn '+RES[r].c+(s&&s.r===r?' cur':'')+'" onclick="setStatus(\''+id+'\',\''+r+'\')">'+RES[r].l+'</button>').join('')+'</div>'+
+    (s?'<div style="text-align:center"><button class="lnk" onclick="setStatus(\''+id+'\',\'\')">Effacer le statut</button></div>':''));}
+function setStatus(id,r){const z=getZone(WALK&&WALK.code);if(!z)return;if(r)z.st[id]={r,t:Date.now()};else delete z.st[id];saveZones();
+  const a=z.ad[id];toast((r?RES[r].l:'Statut effacé')+(a&&a[0]?' · '+a[0]+' '+(a[1]||''):''));backWalk();}
+function backWalk(){const z=getZone(WALK&&WALK.code);const p=HSEL;HSEL=null;mode='walk';if(z&&p)paintPin(z,p);renderWalk();}
+function quitWalk(){const code=WALK&&WALK.code;endWalkUi();if(code)openZone(code,false);else showIdle();}
+function endWalkUi(){walkPins.forEach(m=>m.remove());walkPins.clear();WALK=null;HSEL=null;document.body.classList.remove('walking');$('wtop').classList.remove('on');}
+function drawNext(){endWalkUi();startDraw();toast('Dessinez la zone voisine, puis localisez-vous dedans.');}
+function finishZone(){const z=getZone(WALK&&WALK.code);if(!z)return;const k=zoneCounts(z);
+  modal('<div class="h1">Terminer la zone '+esc(fmtCode(z.code))+' ?</div><div class="muted">'+k.d+' porte'+(k.d>1?'s':'')+' notée'+(k.d>1?'s':'')+' sur '+k.n+'. La zone passera en vert pour l’équipe.</div><div class="gap"></div>'+
+    '<div class="row"><button class="btn" onclick="closeModal()">Continuer</button><button class="btn ok" onclick="closeModal();reallyFinish()">Terminer</button></div>');}
+function reallyFinish(){const z=getZone(WALK&&WALK.code);if(!z)return;z.status='terminee';z.doneAt=Date.now();z.locAt=0;saveZones();const c=z.code;endWalkUi();toast('Zone '+fmtCode(c)+' terminée');openZone(c,false);}
+
+/* numéros des maisons (IGN, adresse la plus proche ; gardé sur le téléphone) */
+let _geoRun=null;
+async function geocodeZone(z){if(_geoRun===z.code)return;_geoRun=z.code;
+  const todo=z.ids.filter(id=>!z.ad[id]&&z.h[id]);let i=0,changed=0;
+  const one=async id=>{const h=z.h[id];for(let k=0;k<3;k++){
+      let r=null;try{r=await fetch('https://data.geopf.fr/geocodage/reverse?lon='+h[0]+'&lat='+h[1]+'&index=address&limit=1&type=housenumber');}catch(e){r=null;}
+      if(r&&r.status===429){await new Promise(s=>setTimeout(s,900*(k+1)));continue;}
+      let j=null;try{j=r&&r.ok?await r.json():null;}catch(e){j=null;}
+      const f=j&&j.features&&j.features[0];
+      if(f&&f.geometry&&f.properties){const g=f.geometry.coordinates;const dm=Math.sqrt(mXY([g[0]-h[0],g[1]-h[1]],h[1]).reduce((a,v)=>a+v*v,0));
+        const p=f.properties;const st=String(p.street||p.name||'').replace(/^\d+\s*/,'').trim();z.ad[id]=dm<=80?[String(p.housenumber||''),st]:['',st];}
+      else z.ad[id]=['',''];
+      return;}};
+  const worker=async()=>{while(i<todo.length){const id=todo[i++];await one(id);changed++;
+      if(WALK&&WALK.code===z.code)paintPin(z,id);if(changed%10===0)saveZones();}};
+  await Promise.all([worker(),worker(),worker(),worker(),worker(),worker()]);
+  saveZones();_geoRun=null;if(mode==='house'&&HSEL)openHouse(HSEL);}
+
+/* ========================= Clic carte ========================= */
+function onMapClick(e){if(Date.now()-_mkTap<450)return;const ll=[e.lngLat.lng,e.lngLat.lat];
+  if(mode==='draw'){
+    if(DM==='pts'){const f=hitAt(e.point,['dr-pt']);if(f&&f.properties.k==='m'){snap();DRAW.splice(f.properties.i+1,0,ll);afterEdit();return;}if(f&&f.properties.k==='v')return;addPt(ll);}
+    else if(DM==='auto')autoAt(ll);
+    return;}
+  if(mode==='sim'){const c=SEL;tryLocate(c,ll,null,true);return;}
+  const box=[[e.point.x-10,e.point.y-10],[e.point.x+10,e.point.y+10]];
+  if(mode==='walk'||mode==='house'){
+    if(map.queryRenderedFeatures(box,{layers:['hs-c']}).length)toast('Cette maison est hors de la zone. Pour la faire : « Nouvelle zone à côté », puis localisez-vous dedans.',4200);
+    else if(mode==='house')backWalk();
+    return;}
+  const z=map.queryRenderedFeatures(e.point,{layers:['dz-fill']});
+  if(z.length){openZone(z[0].properties.code,false);return;}
+  if(mode==='zone')showIdle();}
+
+/* ========================= Recherche d'adresse ========================= */
+let _sT=0;
+$('q').addEventListener('input',()=>{clearTimeout(_sT);const v=$('q').value.trim();if(v.length<3){$('sres').style.display='none';return;}
+  _sT=setTimeout(async()=>{const j=await fetchJson('https://data.geopf.fr/geocodage/search?q='+encodeURIComponent(v)+'&limit=5&index=address',6000);
+    const F=(j&&j.features)||[];const r=$('sres');if(!F.length){r.style.display='none';return;}
+    r.innerHTML=F.map((f,i)=>'<div data-i="'+i+'">'+esc((f.properties&&f.properties.label)||'')+'</div>').join('');r.style.display='block';
+    r.querySelectorAll('div').forEach(d=>d.addEventListener('click',()=>{const f=F[+d.dataset.i];const c=f.geometry.coordinates;
+      map.flyTo({center:c,zoom:f.properties.type==='municipality'?14.5:16.8,duration:900});r.style.display='none';$('q').blur();}));},300);});
+document.addEventListener('click',e=>{if(!e.target.closest('.sbox'))$('sres').style.display='none';if(!e.target.closest('#legend')&&!e.target.closest('#f-leg'))$('legend').classList.remove('on');});
+
+/* ========================= Boutons flottants / aide ========================= */
+$('f-leg').addEventListener('click',()=>$('legend').classList.toggle('on'));
+$('f-gps').addEventListener('click',()=>{if(!navigator.geolocation){toast('GPS indisponible.');return;}toast('Recherche de votre position…',6000);
+  navigator.geolocation.getCurrentPosition(p=>{const ll=[p.coords.longitude,p.coords.latitude];showMe(ll,false);map.flyTo({center:ll,zoom:Math.max(map.getZoom(),16.5),duration:800});toast('Précision : '+Math.round(p.coords.accuracy)+' m');},
+    ()=>toast('Position introuvable.'),{enableHighAccuracy:true,timeout:12000,maximumAge:10000});});
+$('f-help').addEventListener('click',help);
+function modal(h){$('mbox').innerHTML=h;$('modal').classList.add('on');}
+function closeModal(){$('modal').classList.remove('on');}
+$('modal').addEventListener('click',e=>{if(e.target.id==='modal')closeModal();});
+function help(){modal('<div class="h1">Maquette « zones dessinées »</div>'+
+  '<div class="muted">Page de test : <b>rien n’est enregistré dans Porteo</b>. Les zones et les portes restent sur ce téléphone.</div>'+
+  '<ol><li><b>Nouvelle zone</b> : choisissez la méthode à droite — <b>Points</b> (coins à toucher, déplaçables), <b>Main levée</b> (entourer au doigt), <b>Auto</b> (un toucher = les maisons libres autour), <b>Pinceau</b> (peindre les maisons). Le compteur indique les maisons à l’intérieur ('+MIN_H+' minimum, '+MAX_H+' maximum).</li>'+
+  '<li><b>Créer</b> : un code unique est attribué. Il est valable <b>48 h</b> tant que personne ne s’y localise.</li>'+
+  '<li><b>Envoyer</b> : le code part par SMS avec un lien qui ouvre la zone sur un autre téléphone.</li>'+
+  '<li><b>Y aller</b> : itinéraire vers la maison au centre de la zone.</li>'+
+  '<li><b>Me localiser</b> : vous devez être dans la zone (tolérance '+TOL_M+' m). Le parcours démarre alors ; seules les maisons de la zone peuvent être notées.</li>'+
+  '<li><b>Zone voisine</b> : dessinez-en une nouvelle à côté et relocalisez-vous dedans.</li></ol>'+
+  '<div class="muted">Pour tester depuis chez vous : « Simuler ma position (test) ».</div><div class="gap"></div>'+
+  '<button class="btn pri" style="width:100%" onclick="closeModal()">Compris</button>');}
+
+/* ========================= Démarrage ========================= */
+async function loadTeam(){if(!rowid){$('who').textContent='Sans identifiant';return;}
+  const [idj,cs]=await Promise.all([fetchJson(SHEETS_URL+'?rowid='+encodeURIComponent(rowid)+'&t='+Date.now(),15000),
+    fetchJson(SHEETS_URL+'?action=cellstates&rowid='+encodeURIComponent(rowid)+'&t='+Date.now(),20000)]);
+  if(idj&&!idj.error&&idj.isActive!==false){ME={name:(idj.currentUser||idj.userName||'').trim(),company:(idj.clientName||idj.nom||'').trim(),isAdmin:!!idj.isAdmin,ok:true};
+    $('who').textContent=[ME.company,ME.name].filter(Boolean).join(' · ')||'Connecté';}
+  else $('who').textContent='Identifiant non reconnu';
+  if(cs&&Array.isArray(cs.cells)){GRID=cs.cells;renderGrid();return cs;}
+  return null;}
+async function boot(){
+  $('dm').innerHTML=DM_LIST.map(([k,l,i])=>'<button data-m="'+k+'" onclick="setMethod(\''+k+'\')">'+ic(i)+l+'</button>').join('');
+  ZONES=loadZones();
+  let imported=null;
+  if(zParam){const d=decZone(zParam);
+    if(!d)toast('Lien de zone invalide.');
+    else if(Date.now()-d.created>=TTL_MS&&!getZone(d.code))toast('La zone '+fmtCode(d.code)+' a expiré (plus de 48 h sans présence).',4500);
+    else{if(!getZone(d.code)){ZONES.push({code:d.code,pts:d.pts,created:d.created,status:'attente',n:0,ids:null,h:{},st:{},ad:{},ctr:avg(d.pts),by:'',recu:1});saveZones();}imported=d.code;}
+    try{history.replaceState(null,'',location.pathname+(rowid?'?rowid='+encodeURIComponent(rowid):''));}catch(e){}}
+  purge();
+  const teamP=loadTeam();
+  await initMap();
+  renderZones();renderGrid();
+  if(imported){openZone(imported,true);}
+  else{showIdle();
+    const last=ZONES.filter(alive).sort((a,b)=>b.created-a.created)[0];
+    if(last)map.fitBounds(bboxOf(last.pts),{padding:{top:90,bottom:260,left:40,right:40},maxZoom:16.5,duration:0});
+    else{const cs=await teamP;const L=(cs&&(cs.mine&&cs.mine.length?cs.mine:cs.cells))||[];
+      const best=L.slice().sort((a,b)=>(b.ts||parseFR(b.dt||b.date))-(a.ts||parseFR(a.dt||a.date)))[0];
+      if(best){const p=String(best.k).split('_');map.jumpTo({center:[(+p[0]+0.5)*CELL,(+p[1]+0.5)*CELL],zoom:15.6});}}
+    let seen=false;try{seen=localStorage.getItem('porteo_zt_help')==='1';localStorage.setItem('porteo_zt_help','1');}catch(e){}
+    if(!seen)help();}
+  setInterval(()=>{purge();if(mode==='zone')renderZoneCard();},60000);}
+boot();
+</script>
+</body>
+</html>
