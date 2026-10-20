@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Porteo — Test GPS Glide</title>
+<meta name="robots" content="noindex,nofollow">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.js"></script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/maplibre-gl/4.7.1/maplibre-gl.css" rel="stylesheet"/>
+<style>
+  /* PAGE DE TEST « position via les colonnes Distance de Glide ».
+     N'écrit rien, n'appelle aucun serveur Porteo, ne coûte aucune update.
+     ?role=carte → 2ᵉ embed à adresse FIXE : reçoit la position du 1er embed (test du relais). */
+  :root{--ink:#111827;--ink2:#6b7280;--ok:#16a34a;--ko:#dc2626;--wait:#d97706;--bd:#e5e7eb;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:#f6f7f9;font-size:14px;}
+  .wrap{padding:10px;}
+  h1{font-size:15px;margin:0 0 8px;display:flex;align-items:center;gap:8px;}
+  h1 span{font-size:11px;background:#111827;color:#fff;border-radius:6px;padding:2px 7px;}
+  .tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+  .tile{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:8px;text-align:center;}
+  .tile b{display:block;font-size:24px;line-height:1.1;}
+  .tile small{display:block;color:var(--ink2);font-size:11px;line-height:1.2;margin-top:2px;}
+  .verdict{margin-top:8px;border-radius:12px;padding:9px 11px;font-weight:700;font-size:13.5px;line-height:1.35;background:#fef3c7;color:#92400e;}
+  .verdict.ok{background:#dcfce7;color:#166534;} .verdict.ko{background:#fee2e2;color:#991b1b;}
+  .card{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:9px 10px;margin-top:8px;}
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--ink2);margin:0 0 6px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  td{padding:3px 2px;border-top:1px solid #f1f2f4;} tr:first-child td{border-top:none;}
+  td.r{text-align:right;font-variant-numeric:tabular-nums;}
+  .best td{font-weight:800;color:var(--ok);}
+  code{font-size:11.5px;word-break:break-all;background:#f3f4f6;border-radius:6px;padding:4px 6px;display:block;}
+  #map{height:230px;border-radius:12px;margin-top:8px;border:1px solid var(--bd);}
+  .row{display:flex;gap:6px;margin-top:8px;}
+  button{flex:1;border:none;border-radius:10px;padding:10px;font-weight:700;font-size:13px;background:#e5e7eb;color:var(--ink);font-family:inherit;}
+  .tm{display:flex;align-items:center;gap:6px;margin:3px 0;font-size:12.5px;} .tm i{width:12px;height:12px;border-radius:50%;flex:none;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.3);}
+  .lbl{background:#fff;border-radius:7px;padding:1px 6px;font-size:11px;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,.35);white-space:nowrap;transform:translateY(-16px);}
+  .log{font-size:11.5px;font-variant-numeric:tabular-nums;color:#374151;line-height:1.45;max-height:160px;overflow:auto;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Test GPS Glide <span id="role">RÉCEPTEUR</span></h1>
+  <div class="tiles">
+    <div class="tile"><b id="t-load">–</b><small>rechargements de la page</small></div>
+    <div class="tile"><b id="t-hash">–</b><small id="t-hash-l">mises à jour sans rechargement</small></div>
+    <div class="tile"><b id="t-rate">–</b><small id="t-rate-l">rythme des mises à jour</small></div>
+  </div>
+  <div class="verdict" id="verdict">En attente de données…</div>
+
+  <div id="map"></div>
+  <div class="card" id="c-team"><h2>Équipe (test) — voir mes collègues bouger</h2>
+    <div style="display:flex;gap:6px"><input id="nm" placeholder="Votre prénom" maxlength="20" style="flex:1;border:1px solid var(--bd);border-radius:10px;padding:9px;font-size:14px;font-family:inherit">
+    <button style="flex:none;padding:9px 12px" onclick="saveName()">OK</button></div>
+    <div id="team" class="log" style="margin-top:6px">–</div></div>
+  <div class="card"><h2>Position calculée</h2><div id="pos" class="log">–</div></div>
+  <div class="card" id="c-fx"><h2>Formule de Glide (Paris → Marseille)</h2><div id="fx">–</div></div>
+  <div class="card" id="c-raw"><h2>Reçu de Glide (brut)</h2><code id="raw">–</code><div id="parsed" class="log" style="margin-top:6px"></div></div>
+  <div class="card"><h2>Journal</h2><div id="log" class="log"></div></div>
+  <div class="row"><button onclick="resetAll()">Remettre les compteurs à zéro</button><button onclick="follow=!follow;this.textContent=follow?'Suivi carte : oui':'Suivi carte : non'">Suivi carte : oui</button></div>
+</div>
+<script>
+/* ---------- Réglages (identiques aux colonnes de la table « Repères » dans Glide) ---------- */
+const REFS=[[48.3904,-4.4861],[48.5734,7.7521],[42.6887,2.8948]];   /* R1 Brest, R2 Strasbourg, R3 Perpignan (lat, lon) */
+const P1=[48.8566,2.3522], P2=[43.2965,5.3698];                    /* Paris → Marseille : sert à identifier la formule */
+const ROLE=(new URLSearchParams(location.search).get('role')||'').toLowerCase()==='carte'?'carte':'recepteur';
+const K='porteo_probe_'+ROLE+'_';
+const $=id=>document.getElementById(id);
+function sget(k,d){try{const v=localStorage.getItem(K+k);return v==null?d:JSON.parse(v);}catch(e){return d;}}
+function sset(k,v){try{localStorage.setItem(K+k,JSON.stringify(v));}catch(e){}}
+function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function hhmmss(t){const d=new Date(t);return [d.getHours(),d.getMinutes(),d.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');}
+
+/* ---------- Formules de distance candidates (résultat en mètres) ---------- */
+const rad=x=>x*Math.PI/180;
+function hav(R){return (a,b)=>{const dl=rad(b[0]-a[0]),dn=rad(b[1]-a[1]);const h=Math.sin(dl/2)**2+Math.cos(rad(a[0]))*Math.cos(rad(b[0]))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.min(1,Math.sqrt(h)));};}
+function vincenty(p,q){const a=6378137,f=1/298.257223563,b=a*(1-f);const L=rad(q[1]-p[1]),U1=Math.atan((1-f)*Math.tan(rad(p[0]))),U2=Math.atan((1-f)*Math.tan(rad(q[0])));
+  const sU1=Math.sin(U1),cU1=Math.cos(U1),sU2=Math.sin(U2),cU2=Math.cos(U2);let l=L,lp,it=0,sS,cS,sig,sA,c2A,c2m;
+  do{const sl=Math.sin(l),cl=Math.cos(l);sS=Math.sqrt((cU2*sl)**2+(cU1*sU2-sU1*cU2*cl)**2);if(sS===0)return 0;cS=sU1*sU2+cU1*cU2*cl;sig=Math.atan2(sS,cS);
+    sA=cU1*cU2*sl/sS;c2A=1-sA*sA;c2m=c2A?cS-2*sU1*sU2/c2A:0;const C=f/16*c2A*(4+f*(4-3*c2A));lp=l;l=L+(1-C)*f*sA*(sig+C*sS*(c2m+C*cS*(-1+2*c2m*c2m)));}while(Math.abs(l-lp)>1e-12&&++it<200);
+  const u2=c2A*(a*a-b*b)/(b*b),A=1+u2/16384*(4096+u2*(-768+u2*(320-175*u2))),B=u2/1024*(256+u2*(-128+u2*(74-47*u2)));
+  const dS=B*sS*(c2m+B/4*(cS*(-1+2*c2m*c2m)-B/6*c2m*(-3+4*sS*sS)*(-3+4*c2m*c2m)));return b*A*(sig-dS);}
+function eqr(R){return (a,b)=>{const x=rad(b[1]-a[1])*Math.cos(rad((a[0]+b[0])/2)),y=rad(b[0]-a[0]);return R*Math.sqrt(x*x+y*y);};}
+const FX=[['Haversine R=6371 km',hav(6371000)],['Haversine R=6371,0088 km',hav(6371008.8)],['Haversine R=6378,137 km',hav(6378137)],['Haversine R=6372,8 km',hav(6372797.56)],
+  ['Vincenty (ellipsoïde WGS84)',vincenty],['Équirectangulaire R=6371 km',eqr(6371000)]];
+
+/* ---------- Lecture des valeurs envoyées par Glide ----------
+   Tolérant : virgule ou point, « km », espaces (y compris insécables), valeurs encodées, # ou ? */
+function num(s){if(s==null)return NaN;let t=String(s).replace(/[\s  ]/g,'').toLowerCase();const mi=/mi/.test(t)&&!/km/.test(t);t=t.replace(/[^0-9,.\-]/g,'');
+  const lc=t.lastIndexOf(','),ld=t.lastIndexOf('.');if(lc>=0&&ld>=0){if(lc>ld)t=t.replace(/\./g,'').replace(',','.');else t=t.replace(/,/g,'');}
+  else if(lc>=0){t=(t.split(',').length>2)?t.replace(/,/g,''):t.replace(',','.');}
+  const v=parseFloat(t);return mi?v*1.609344:v;}
+function readParams(){let raw='';try{raw=decodeURIComponent(location.href);}catch(e){raw=location.href;}
+  const pick=k=>{const m=new RegExp('[#?&]'+k+'=([^&#]*)').exec(raw);return m?m[1]:null;};
+  return {raw:(location.hash||location.search||''),d:[pick('d1'),pick('d2'),pick('d3')],dp:pick('dp')};}
+
+/* ---------- Position à partir des 3 distances (moindres carrés, formule choisie) ---------- */
+function solve(D,f){let p=[46.6,2.4];
+  for(let it=0;it<40;it++){const r=REFS.map((R,i)=>f(p,R)-D[i]);const e=1e-5;
+    const J=REFS.map(R=>{const f0=f(p,R);return [(f([p[0]+e,p[1]],R)-f0)/e,(f([p[0],p[1]+e],R)-f0)/e];});
+    let a=0,b=0,c=0,g0=0,g1=0;J.forEach((j,i)=>{a+=j[0]*j[0];b+=j[0]*j[1];c+=j[1]*j[1];g0+=j[0]*r[i];g1+=j[1]*r[i];});
+    const det=a*c-b*b;if(!det)break;const dx=(c*g0-b*g1)/det,dy=(a*g1-b*g0)/det;p=[p[0]-dx,p[1]-dy];if(Math.abs(dx)+Math.abs(dy)<1e-10)break;}
+  const rms=Math.sqrt(REFS.reduce((s,R,i)=>s+(f(p,R)-D[i])**2,0)/3);return {p,rms};}
+
+/* ---------- État ---------- */
+const LOAD_N=sget('loads',0)+1;sset('loads',LOAD_N);
+let hashN=sget('hashn',0), reloadUpd=sget('relupd',0), lastRaw=sget('lastraw',''), times=sget('times',[]), trace=sget('trace',[]);
+let bestFx=null, follow=true, map=null, mk=null, lastMsg=0, recvN=sget('recvn',0);
+let bc=null;try{bc=new BroadcastChannel('porteo-probe');}catch(e){bc=null;}
+function log(t){const L=$('log');L.innerHTML='<div>'+hhmmss(Date.now())+' — '+esc(t)+'</div>'+L.innerHTML;if(L.children.length>40)L.lastChild.remove();}
+
+function analyse(kind){
+  const P=readParams();const D=P.d.map(x=>num(x)*1000),DP=num(P.dp)*1000;
+  $('raw').textContent=P.raw||'(adresse sans données)';
+  const isNew=P.raw!==lastRaw||kind==='load';   /* même adresse revue (2ᵉ détection) → rien à renvoyer */
+  if(P.raw!==lastRaw&&P.d[0]!=null){
+    if(kind==='hash'){hashN++;sset('hashn',hashN);}else if(kind==='load'&&lastRaw){reloadUpd++;sset('relupd',reloadUpd);}
+    lastRaw=P.raw;sset('lastraw',lastRaw);times.push(Date.now());times=times.slice(-30);sset('times',times);
+    log((kind==='hash'?'mise à jour SANS rechargement':'mise à jour par RECHARGEMENT')+' : '+P.d.map(x=>x||'?').join(' | '));}
+  $('parsed').innerHTML='d1 = '+fmtM(D[0])+' · d2 = '+fmtM(D[1])+' · d3 = '+fmtM(D[2])+(P.dp!=null?' · Paris–Marseille = '+fmtM(DP):'');
+  /* formule */
+  if(Number.isFinite(DP)){const rows=FX.map(([n,f])=>({n,f,e:f(P1,P2)-DP})).sort((a,b)=>Math.abs(a.e)-Math.abs(b.e));bestFx=rows[0];
+    $('fx').innerHTML='<table>'+rows.map((r,i)=>'<tr class="'+(i===0&&Math.abs(r.e)<5?'best':'')+'"><td>'+esc(r.n)+'</td><td class="r">'+(r.e>=0?'+':'')+r.e.toFixed(1)+' m</td></tr>').join('')+'</table>'+
+      '<div class="log" style="margin-top:4px">'+(Math.abs(rows[0].e)<5?'✓ Formule trouvée : '+esc(rows[0].n):'Aucune formule à moins de 5 m (écart mini '+Math.abs(rows[0].e).toFixed(1)+' m)')+'</div>';}
+  /* position */
+  if(D.every(Number.isFinite)){const f=(bestFx&&Math.abs(bestFx.e)<5)?bestFx.f:hav(6371008.8);const s=solve(D,f);
+    const last=trace[trace.length-1];const mv=last?hav(6371008.8)(last,s.p):0;
+    if(!last||mv>0.5){trace.push(s.p);trace=trace.slice(-500);sset('trace',trace);}
+    $('pos').innerHTML='<b>'+s.p[0].toFixed(6)+', '+s.p[1].toFixed(6)+'</b> · cohérence ±'+s.rms.toFixed(1)+' m'+(last?' · déplacement '+mv.toFixed(1)+' m':'')+
+      '<br>Formule utilisée : '+esc((bestFx&&Math.abs(bestFx.e)<5)?bestFx.n:'Haversine 6371,0088 km (par défaut)');
+    drawMap(s.p);
+    const msg={lat:s.p[0],lon:s.p[1],rms:s.rms,t:Date.now()};if(isNew){myPos=s.p;myPosT=msg.t;}   /* même message par les 2 canaux → compté une seule fois */
+    if(isNew){try{if(bc)bc.postMessage(msg);}catch(e){}
+      try{localStorage.setItem('porteo_probe_relay',JSON.stringify(msg));}catch(e){}}}
+  render();}
+function fmtM(v){return Number.isFinite(v)?(v>=1000?(v/1000).toFixed(4)+' km':v.toFixed(1)+' m'):'?';}
+function render(){
+  $('t-load').textContent=LOAD_N;
+  if(ROLE==='carte'){$('t-hash').textContent=recvN;$('t-hash-l').textContent='positions reçues du 1er embed';}
+  else $('t-hash').textContent=hashN;
+  const iv=[];for(let i=1;i<times.length;i++)iv.push((times[i]-times[i-1])/1000);
+  const ago=times.length?Math.round((Date.now()-times[times.length-1])/1000):null;
+  $('t-rate').textContent=iv.length?(iv.slice(-10).reduce((a,b)=>a+b,0)/Math.min(10,iv.length)).toFixed(1)+' s':'–';
+  $('t-rate-l').textContent=ago!=null?'rythme · dernière il y a '+ago+' s':'rythme des mises à jour';
+  const v=$('verdict');let cls='',txt;
+  if(ROLE==='carte'){
+    if(recvN>0&&LOAD_N===1){cls='ok';txt='✓ Relais OK : cette page reçoit la position sans jamais se recharger.';}
+    else if(recvN>0){cls='ok';txt='Relais OK ('+recvN+' positions reçues). Rechargements : '+LOAD_N+' (remettez à zéro puis marchez).';}
+    else txt='En attente de positions du 1er embed… (marchez quelques mètres)';}
+  else{
+    const upd=hashN+reloadUpd;
+    if(upd===0)txt=times.length?'Données reçues une fois. Marchez : les compteurs doivent augmenter.':'En attente de données de Glide…';
+    else if(hashN>0&&reloadUpd===0){cls='ok';txt='✓ Glide met à jour l’adresse SANS recharger la page ('+hashN+' fois). Cas idéal.';}
+    else if(reloadUpd>0&&hashN===0){cls='ok';txt='Glide RECHARGE la page à chaque changement ('+reloadUpd+' fois). Ça marche avec le relais (2ᵉ embed).';}
+    else{cls='ok';txt='Mises à jour reçues : '+hashN+' sans rechargement, '+reloadUpd+' par rechargement.';}
+    if(ago!=null&&ago>60&&upd>0){cls='';txt+=' — rien reçu depuis '+ago+' s.';}}
+  v.className='verdict '+cls;v.textContent=txt;}
+function drawMap(p){if(!map||!map.getSource('tr'))return;
+  map.getSource('tr').setData({type:'Feature',geometry:{type:'LineString',coordinates:trace.map(q=>[q[1],q[0]])}});
+  if(!mk){const el=document.createElement('div');el.style.cssText='width:18px;height:18px;border-radius:50%;background:#2563eb;border:3px solid #fff;box-shadow:0 0 0 6px rgba(37,99,235,.25),0 2px 6px rgba(0,0,0,.45)';mk=new maplibregl.Marker({element:el}).setLngLat([p[1],p[0]]).addTo(map);}
+  else mk.setLngLat([p[1],p[0]]);
+  if(follow)map.easeTo({center:[p[1],p[0]],zoom:Math.max(map.getZoom(),17),duration:400});}
+function resetAll(){['loads','hashn','relupd','lastraw','times','trace','recvn'].forEach(k=>{try{localStorage.removeItem(K+k);}catch(e){}});location.reload();}
+
+/* ---------- Équipe (test) : chaque téléphone envoie sa position toutes les 5 s à un petit relais Apps Script
+   SÉPARÉ de Porteo (cache mémoire 10 min, aucune feuille, aucune update Glide) et reçoit celle des autres. ---------- */
+const QS=new URLSearchParams(location.search), SRV=(QS.get('srv')||'').trim(), GRP=(QS.get('g')||'porteo-test').replace(/[^a-zA-Z0-9_-]/g,'').slice(0,30);
+let myPos=null, myPosT=0, sentT=0, TEAM={}, teamMk={}, teamTr={}, teamBusy=false, teamErr=0;
+const MY_ID=(()=>{let v=null;try{v=localStorage.getItem('porteo_probe_id');}catch(e){}if(!v){v=Math.random().toString(36).slice(2,10);try{localStorage.setItem('porteo_probe_id',v);}catch(e){}}return v;})();
+let MY_NAME=(()=>{try{return localStorage.getItem('porteo_probe_name')||'';}catch(e){return '';}})();
+const COLS=['#dc2626','#16a34a','#9333ea','#0891b2','#ca8a04','#db2777','#4f46e5'];
+function colOf(id){let h=0;for(const c of id)h=(h*31+c.charCodeAt(0))>>>0;return COLS[h%COLS.length];}
+function saveName(){MY_NAME=($('nm').value||'').trim().slice(0,20);try{localStorage.setItem('porteo_probe_name',MY_NAME);}catch(e){}teamTick(true);}
+async function teamTick(force){if(!SRV||teamBusy||document.hidden)return;teamBusy=true;
+  let u=SRV+(SRV.includes('?')?'&':'?')+'g='+encodeURIComponent(GRP)+'&id='+MY_ID+'&n='+encodeURIComponent(MY_NAME||'?');
+  if(myPos&&myPosT>sentT){u+='&lat='+myPos[0].toFixed(6)+'&lon='+myPos[1].toFixed(6);}
+  const t0=Date.now();
+  try{const c=new AbortController();const to=setTimeout(()=>c.abort(),9000);const r=await fetch(u,{signal:c.signal});clearTimeout(to);const j=await r.json();
+    if(j&&j.ok){if(u.includes('&lat='))sentT=myPosT;teamErr=0;TEAM={};(j.list||[]).forEach(m=>{if(m.id!==MY_ID)TEAM[m.id]=m;});drawTeam(Date.now()-t0);}else teamErr++;}
+  catch(e){teamErr++;}
+  teamBusy=false;if(teamErr)$('team').innerHTML='Relais injoignable ('+teamErr+')… vérifiez l’adresse srv.';}
+function drawTeam(ms){const ids=Object.keys(TEAM);
+  $('team').innerHTML=(ids.length?ids.map(id=>{const m=TEAM[id];const d=myPos?hav(6371008.8)(myPos,[m.lat,m.lon]):null;
+      return '<div class="tm"><i style="background:'+colOf(id)+'"></i><b>'+esc(m.n||'?')+'</b> · vu il y a '+Math.round(m.age/1000)+' s'+(d!=null?' · à '+(d<1000?Math.round(d)+' m':(d/1000).toFixed(1)+' km')+' de vous':'')+'</div>';}).join('')
+    :'Aucun collègue pour l’instant (il doit ouvrir le même écran).')+'<div style="color:#9ca3af;margin-top:3px">Groupe « '+esc(GRP)+' » · aller-retour serveur '+ms+' ms · vous : '+esc(MY_NAME||'sans prénom')+'</div>';
+  if(!map||!map.getSource('team'))return;
+  ids.forEach(id=>{const m=TEAM[id],p=[m.lat,m.lon];const T=teamTr[id]||(teamTr[id]=[]);const l=T[T.length-1];if(!l||l[0]!==p[0]||l[1]!==p[1]){T.push(p);if(T.length>300)T.shift();}
+    if(!teamMk[id]){const el=document.createElement('div');el.style.cssText='display:flex;flex-direction:column;align-items:center';
+      el.innerHTML='<div class="lbl"></div><div style="width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.45);background:'+colOf(id)+'"></div>';
+      teamMk[id]=new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat([m.lon,m.lat]).addTo(map);}
+    teamMk[id].getElement().querySelector('.lbl').textContent=m.n||'?';teamMk[id].setLngLat([m.lon,m.lat]);});
+  Object.keys(teamMk).forEach(id=>{if(!TEAM[id]){teamMk[id].remove();delete teamMk[id];}});
+  map.getSource('team').setData({type:'FeatureCollection',features:ids.map(id=>({type:'Feature',properties:{c:colOf(id)},geometry:{type:'LineString',coordinates:teamTr[id].map(q=>[q[1],q[0]])}}))});}
+
+/* ---------- Carte ---------- */
+try{map=new maplibregl.Map({container:'map',attributionControl:false,center:[2.4,46.6],zoom:5,
+  style:{version:8,sources:{plan:{type:'raster',tileSize:256,maxzoom:19,tiles:['https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&FORMAT=image/png&TILEMATRIXSET=PM&TILEMATRIX={z}&TILEROW={y}&TILECOL={x}']}},
+    layers:[{id:'bg',type:'background',paint:{'background-color':'#eef0f3'}},{id:'plan',type:'raster',source:'plan'}]}});
+  map.on('load',()=>{map.addSource('tr',{type:'geojson',data:{type:'Feature',geometry:{type:'LineString',coordinates:[]}}});
+    map.addLayer({id:'tr',type:'line',source:'tr',paint:{'line-color':'#f07020','line-width':4,'line-opacity':.85}});
+    map.addSource('team',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    map.addLayer({id:'team',type:'line',source:'team',paint:{'line-color':['get','c'],'line-width':3,'line-opacity':.8}});
+    if(trace.length)drawMap(trace[trace.length-1]);});}catch(e){$('map').textContent='Carte indisponible';}
+
+/* ---------- Démarrage ---------- */
+if(ROLE==='carte'){
+  $('role').textContent='2ᵉ EMBED (RELAIS)';['c-fx','c-raw'].forEach(id=>$(id).style.display='none');
+  const onPos=m=>{if(!m||!Number.isFinite(m.lat)||m.t===lastMsg)return;lastMsg=m.t;recvN++;sset('recvn',recvN);times.push(Date.now());times=times.slice(-30);sset('times',times);
+    const p=[m.lat,m.lon];const last=trace[trace.length-1];if(!last||hav(6371008.8)(last,p)>0.5){trace.push(p);trace=trace.slice(-500);sset('trace',trace);}
+    $('pos').innerHTML='<b>'+m.lat.toFixed(6)+', '+m.lon.toFixed(6)+'</b> · cohérence ±'+(+m.rms).toFixed(1)+' m (reçu du 1er embed)';drawMap(p);log('position reçue');render();};
+  if(bc)bc.onmessage=e=>onPos(e.data);
+  window.addEventListener('storage',e=>{if(e.key==='porteo_probe_relay'){try{onPos(JSON.parse(e.newValue));}catch(x){}}});
+  log('page chargée (n° '+LOAD_N+')');render();
+}else{
+  log('page chargée (n° '+LOAD_N+')');analyse('load');
+  window.addEventListener('hashchange',()=>analyse('hash'));
+  let lastHref=location.href;setInterval(()=>{if(location.href!==lastHref){lastHref=location.href;analyse('hash');}},500);   /* au cas où l'évènement ne serait pas envoyé */
+}
+setInterval(render,1000);
+if(ROLE!=='carte'){$('nm').value=MY_NAME;
+  if(!SRV)$('team').innerHTML='Pour activer : ajoutez <b>?srv=ADRESSE_DU_RELAIS</b> avant le # dans la colonne « URL test ».';
+  else{teamTick(true);setInterval(()=>teamTick(false),5000);}}
+else{$('c-team').style.display='none';}
+</script>
+</body>
+</html>
